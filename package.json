@@ -1,0 +1,41 @@
+{
+  "name": "sio-ouvidoria",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"node --watch server/index.js\" \"vite --config client/vite.config.js\"",
+    "build": "vite build --config client/vite.config.js",
+    "start": "node server/index.js",
+    "migrate": "node scripts/migrate.js",
+    "admin:create": "node scripts/admin.js create",
+    "password:issue": "node scripts/admin.js reset",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "test:integration": "npm run build && node scripts/test-postgres.js",
+    "test:ui": "npm run build && node scripts/test-postgres.js --ui"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "helmet": "^8.1.0",
+    "lucide-react": "^0.468.0",
+    "pg": "^8.16.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.5",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "supertest": "^7.1.4",
+    "vite": "^7.2.2"
+  }
+}
