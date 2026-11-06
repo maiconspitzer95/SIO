@@ -1,8 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import express from "express";
 import { createPool } from "../server/config/database.js";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/services/passwords.js";
@@ -27,10 +25,6 @@ export async function browserSmoke(connectionString) {
     ]);
     await pool.query("DELETE FROM limites_acesso");
     const app = await createApp(pool, config);
-    app.use(express.static(resolve("client/dist")));
-    app.get("/{*path}", (req, res) =>
-      res.sendFile(resolve("client/dist/index.html")),
-    );
     server = await new Promise((resolveServer) => {
       const s = app.listen(0, "127.0.0.1", () => resolveServer(s));
     });

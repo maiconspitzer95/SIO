@@ -17,10 +17,13 @@ Aplicação JavaScript com React/Vite, Express e PostgreSQL. Esta entrega implem
 3. Crie um banco PostgreSQL dedicado e seu usuário pelo procedimento administrativo local. O comando de migrations não cria nem redefine bancos.
 4. `npm run migrate`
 5. Preencha `ADMIN_LOGIN`, `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` no ambiente (senha com 12–128 caracteres). Execute `npm run admin:create`. Esse comando cria somente Master, não concede perfil operacional e não sobrescreve usuário existente. Remova a senha de provisionamento após executar.
-6. `npm run dev`
-7. Abra [http://localhost:5173](http://localhost:5173). A API escuta `127.0.0.1:3000`. Use exatamente a origem configurada em `APP_ORIGIN`; ela é validada pela proteção CSRF.
+6. `npm run build`
+7. `pm2 start server.js` (ou `npm start`, sem PM2).
+8. Abra [http://localhost:5004](http://localhost:5004). Frontend e API compartilham a porta **5004**, sem servidor Vite separado. Use exatamente a origem configurada em `APP_ORIGIN`; ela é validada pela proteção CSRF.
 
-Se mudar a porta da API em desenvolvimento, ajuste também o proxy de `client/vite.config.js`. A porta de produção é livremente configurável por `PORT`.
+O `server.js` da raiz carrega o `.env` do projeto e inicia o Express com o build React. Se mudar a porta, ajuste `PORT` e `APP_ORIGIN` no `.env`. Para desenvolvimento, `npm run dev` compila o frontend e inicia o backend com reinício automático, também na porta 5004; alterações posteriores no frontend exigem `npm run build` e atualização do navegador.
+
+Após alterar código: `npm run build` e `pm2 restart server --update-env`. O comando `pm2 start server.js` usa o nome padrão `server`; opcionalmente use `pm2 start server.js --name sio` ou o arquivo ecosystem, e então gerencie esse processo pelo nome `sio`. Não inicie as duas opções simultaneamente na mesma porta. Execute `pm2 save` para salvar a lista de processos.
 
 ### Recuperar senha
 

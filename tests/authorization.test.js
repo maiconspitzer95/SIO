@@ -102,7 +102,7 @@ test("configuração rejeita segredo padrão e HTTP em produção", () => {
     APP_ORIGIN: "http://localhost:5173",
     SESSION_SECRET: "x".repeat(64),
   };
-  assert.equal(readConfig(env).PORT, 3000);
+  assert.equal(readConfig(env).PORT, 5004);
   assert.throws(() => readConfig({ ...env, SESSION_SECRET: "CHANGE_ME" }));
   assert.throws(() => readConfig({ ...env, NODE_ENV: "production" }));
 });

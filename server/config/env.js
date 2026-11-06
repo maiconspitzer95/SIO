@@ -8,7 +8,7 @@ export function readConfig(env = process.env) {
       .enum(["development", "test", "production"])
       .default("development"),
     HOST: z.string().default("127.0.0.1"),
-    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    PORT: z.coerce.number().int().min(1).max(65535).default(5004),
     DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//),
     APP_ORIGIN: z.url(),
     SESSION_SECRET: z

@@ -80,7 +80,8 @@ export async function createApp(pool, config) {
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "Recurso não encontrado." }),
   );
-  if (config.NODE_ENV === "production") {
+  {
+    // Frontend e API compartilham a mesma porta em todos os ambientes.
     const dist = fileURLToPath(new URL("../client/dist/", import.meta.url));
     app.use(express.static(dist, { index: false }));
     app.get("/{*path}", (req, res) => res.sendFile(`${dist}/index.html`));

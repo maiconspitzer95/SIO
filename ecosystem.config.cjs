@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "sio",
-      script: "server/index.js",
+      script: "server.js",
       cwd: __dirname,
       instances: 1,
       exec_mode: "fork",
@@ -10,7 +10,7 @@ module.exports = {
       max_memory_restart: "512M",
       kill_timeout: 10000,
       time: true,
-      env: { NODE_ENV: "production" },
+      // NODE_ENV e demais parâmetros são lidos do .env.
     },
   ],
 };

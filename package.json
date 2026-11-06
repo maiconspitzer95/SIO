@@ -7,9 +7,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k \"node --watch server/index.js\" \"vite --config client/vite.config.js\"",
+    "dev": "npm run build && node --watch server.js",
     "build": "vite build --config client/vite.config.js",
-    "start": "node server/index.js",
+    "start": "node server.js",
     "migrate": "node scripts/migrate.js",
     "admin:create": "node scripts/admin.js create",
     "password:issue": "node scripts/admin.js reset",

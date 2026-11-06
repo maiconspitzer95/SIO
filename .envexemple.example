@@ -1,10 +1,10 @@
 NODE_ENV=development
 HOST=127.0.0.1
-PORT=3000
-APP_ORIGIN=http://localhost:5173
-DATABASE_URL=postgresql://sio_user:CHANGE_ME@localhost:5432/sio
+PORT=5004
+APP_ORIGIN=http://localhost:5004
+DATABASE_URL=postgresql://SIC:ijs9812@localhost:5432/sic
 # Gere: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-SESSION_SECRET=REPLACE_WITH_AT_LEAST_48_RANDOM_CHARACTERS
+SESSION_SECRET=886871194d1accd57769efcaa8819da9dcaca1c3d1349588bc7f5d47cbb26457f86ed54e557411113b8d7b2dfb867393
 SESSION_IDLE_MINUTES=30
 SESSION_ABSOLUTE_HOURS=8
 # Produção: HTTPS obrigatório; 1 somente atrás de proxy local confiável.
@@ -13,9 +13,9 @@ PG_SSL=false
 # Opcional: caminho do certificado CA para PostgreSQL remoto
 PG_CA_FILE=
 # Usadas somente pelo comando admin:create. Remova após provisionar.
-ADMIN_LOGIN=
-ADMIN_NAME=
-ADMIN_EMAIL=
-ADMIN_PASSWORD=
+ADMIN_LOGIN=maicon
+ADMIN_NAME=maiconspitzer
+ADMIN_EMAIL=maiconc28@hotmail.com
+ADMIN_PASSWORD=ijs9812@ikx6719
 # Recuperação administrativa: password:issue exige RESET_LOGIN.
 RESET_LOGIN=
