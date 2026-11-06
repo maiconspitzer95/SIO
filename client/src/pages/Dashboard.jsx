@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { useData } from "../hooks/useData.js";
 import { PageTitle } from "../components/PageTitle.jsx";
 import { CaseFilters, queryString } from "../components/CaseFilters.jsx";
 import { Status, formatDate, Feedback } from "../components/Forms.jsx";
+
 export function Dashboard({ reports = false }) {
   const [filters, setFilters] = useState({}),
     [downloadError, setDownloadError] = useState(""),
@@ -89,6 +91,64 @@ export function Dashboard({ reports = false }) {
               </article>
             ))}
           </div>
+
+          {d.overdue?.length > 0 && (
+            <section className="card overdue-card section-gap">
+              <div className="section-heading">
+                <h2>
+                  <AlertTriangle size={20} color="#dc2626" /> Alertas de prazo vencido — Painel da Ouvidoria
+                </h2>
+                <span className="overdue-badge">{d.overdue.length} em atraso</span>
+              </div>
+              <p className="muted small">
+                Manifestações que ultrapassaram o prazo. Acompanhamento do gestor institucional e do gerente responsável pelo atraso.
+              </p>
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Registro</th>
+                      <th>Tipo</th>
+                      <th>Área</th>
+                      <th>Gestor responsável</th>
+                      <th>Gerente vinculado</th>
+                      <th>Vencimento</th>
+                      <th>Alerta gerado em</th>
+                      <th>Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.overdue.map((m) => (
+                      <tr key={m.id} className="overdue-row">
+                        <td>
+                          <strong>{m.registro}</strong>
+                        </td>
+                        <td>{m.tipo}</td>
+                        <td>{m.area_nome}</td>
+                        <td>{m.gestor_nome}</td>
+                        <td>
+                          <strong>{m.gerente_nome || "—"}</strong>
+                        </td>
+                        <td>{formatDate(m.vencimento)}</td>
+                        <td>
+                          {formatDate(m.alerta_gerente_em) || "Alerta registrado"}
+                        </td>
+                        <td>
+                          <Link
+                            to={"/manifestacoes/" + m.id}
+                            className="text-button"
+                          >
+                            Ver detalhes
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <div className="chart-grid">
             {Object.entries({
               tipo: "Por tipo de manifestação",

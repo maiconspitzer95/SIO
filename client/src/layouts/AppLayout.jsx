@@ -15,6 +15,8 @@ import {
 import { Brand } from "../components/Brand.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { Notifications } from "../components/Notifications.jsx";
+import logoUrl from "../assets/santacasalogo.png";
+
 export function AppLayout() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -37,8 +39,8 @@ export function AppLayout() {
       window.removeEventListener("keydown", escape);
     };
   }, []);
-  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const links = [
     { path: "/", label: "Visão geral", icon: LayoutDashboard },
     ...(user.permissoes.includes("manifestacoes.acompanhar")
@@ -57,7 +59,7 @@ export function AppLayout() {
       ? [{ path: "/cadastros", label: "Cadastros", icon: Settings }]
       : []),
     ...(user.permissoes.includes("usuarios.gerenciar")
-      ? [{ path: "/perfis", label: "Perfis e permissões", icon: ShieldCheck }]
+      ? [{ path: "/perfis", label: "Perfis", icon: ShieldCheck }]
       : []),
     ...(user.permissoes.includes("auditoria.consultar")
       ? [{ path: "/auditoria", label: "Auditoria", icon: ScrollText }]
@@ -65,6 +67,7 @@ export function AppLayout() {
   ];
   async function signOut() {
     setBusy(true);
+    setError("");
     try {
       await logout();
     } catch (e) {
@@ -127,7 +130,13 @@ export function AppLayout() {
           >
             <Menu />
           </button>
-          <div>
+          <div className="topbar-identity">
+            <img
+              src={logoUrl}
+              alt="Santa Casa de Pelotas"
+              className="topbar-logo"
+            />
+            <span className="header-divider" />
             <strong>SIO</strong>
             <span className="header-divider" />{" "}
             <span>Sistema Integrado de Ouvidoria</span>

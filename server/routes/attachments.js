@@ -66,7 +66,7 @@ export function attachmentRoutes(pool, config) {
             !req.user.perfis.includes("OUVIDORIA") &&
             !(
               req.user.perfis.includes("GESTOR") &&
-              manager.usuario_id === req.user.id &&
+              manager?.usuario_id === req.user.id &&
               ["encaminhada", "complementacao"].includes(m.etapa)
             )
           )

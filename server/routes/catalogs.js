@@ -15,10 +15,15 @@ export function catalogRoutes(pool) {
   const r = Router();
   r.get("/lookups", async (req, res) => {
     const result = {};
-    for (const table of Object.keys(catalogSchemas))
-      result[table] = (
-        await pool.query(`SELECT * FROM ${table} WHERE ativo ORDER BY nome`)
-      ).rows;
+    for (const table of Object.keys(catalogSchemas)) {
+      let q = `SELECT * FROM ${table} WHERE ativo ORDER BY nome`;
+      if (table === "gerentes") {
+        q = `SELECT ge.*, s.nome AS setor_nome FROM gerentes ge LEFT JOIN setores s ON s.id=ge.setor_id WHERE ge.ativo ORDER BY ge.nome`;
+      } else if (table === "gestores") {
+        q = `SELECT g.*, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.ativo ORDER BY g.nome`;
+      }
+      result[table] = (await pool.query(q)).rows;
+    }
     // Diretório mínimo necessário para atribuição e prevenção de conflitos; sem logins/e-mails.
     result.pessoas = (
       await pool.query("SELECT id,nome FROM usuarios WHERE ativo ORDER BY nome")
@@ -42,7 +47,7 @@ export function catalogRoutes(pool) {
     if (!id && !d.senha)
       throw new HttpError(
         400,
-        "Informe uma senha inicial de pelo menos 12 caracteres.",
+        "Informe uma senha inicial de até 6 caracteres.",
       );
     const hash = d.senha ? await hashPassword(d.senha) : null;
     const saved = await transaction(pool, async (db) => {
@@ -135,8 +140,14 @@ export function catalogRoutes(pool) {
       const table = req.params.table;
       if (!catalogSchemas[table])
         throw new HttpError(404, "Cadastro inexistente.");
+      let q = `SELECT * FROM ${table} ORDER BY nome`;
+      if (table === "gerentes") {
+        q = `SELECT ge.*, s.nome AS setor_nome FROM gerentes ge LEFT JOIN setores s ON s.id=ge.setor_id ORDER BY ge.nome`;
+      } else if (table === "gestores") {
+        q = `SELECT g.*, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id ORDER BY g.nome`;
+      }
       res.json({
-        items: (await pool.query(`SELECT * FROM ${table} ORDER BY nome`)).rows,
+        items: (await pool.query(q)).rows,
       });
     },
   );
@@ -180,44 +191,60 @@ export function catalogRoutes(pool) {
         ).rowCount
       )
         throw new HttpError(400, "Área inativa ou inválida.");
-      if (["gestores", "gerentes"].includes(table)) {
-        const role = table === "gestores" ? "GESTOR" : "GERENTE";
+
+      if (table === "gerentes") {
+        if (d.usuario_id) {
+          const userCheck = await db.query(
+            "SELECT u.id FROM usuarios u JOIN usuario_perfis up ON up.usuario_id=u.id JOIN perfis p ON p.id=up.perfil_id WHERE u.id=$1 AND u.ativo AND p.codigo='GERENTE'",
+            [d.usuario_id],
+          );
+          if (!userCheck.rowCount)
+            throw new HttpError(400, "Usuário vinculado deve estar ativo e possuir perfil GERENTE.");
+        }
+        if (d.setor_id) {
+          const sRow = (
+            await db.query("SELECT id, area_id FROM setores WHERE id=$1 AND ativo", [d.setor_id])
+          ).rows[0];
+          if (!sRow) throw new HttpError(400, "Setor selecionado não encontrado ou inativo.");
+          d.area_id = sRow.area_id;
+        } else if (d.area_id) {
+          const aRow = (
+            await db.query("SELECT id FROM areas_tecnicas WHERE id=$1 AND ativo", [d.area_id])
+          ).rowCount;
+          if (!aRow) throw new HttpError(400, "Área técnica inativa ou inválida.");
+        }
+      }
+
+      if (table === "gestores") {
+        if (d.usuario_id) {
+          const userCheck = await db.query(
+            "SELECT u.id FROM usuarios u JOIN usuario_perfis up ON up.usuario_id=u.id JOIN perfis p ON p.id=up.perfil_id WHERE u.id=$1 AND u.ativo AND p.codigo='GESTOR'",
+            [d.usuario_id],
+          );
+          if (!userCheck.rowCount)
+            throw new HttpError(400, "Usuário vinculado deve estar ativo e possuir perfil GESTOR.");
+        }
         if (
           !(
             await db.query(
-              "SELECT u.id FROM usuarios u JOIN usuario_perfis up ON up.usuario_id=u.id JOIN perfis p ON p.id=up.perfil_id WHERE u.id=$1 AND u.ativo AND p.codigo=$2",
-              [d.usuario_id, role],
+              "SELECT id FROM setores WHERE id=$1 AND area_id=$2 AND ativo",
+              [d.setor_id, d.area_id],
             )
           ).rowCount
         )
-          throw new HttpError(
-            400,
-            `Usuário deve estar ativo e possuir perfil ${role}.`,
-          );
-        if (table === "gestores") {
-          if (
-            !(
-              await db.query(
-                "SELECT id FROM setores WHERE id=$1 AND area_id=$2 AND ativo",
-                [d.setor_id, d.area_id],
-              )
-            ).rowCount
+          throw new HttpError(400, "Setor deve pertencer à área selecionada e estar ativo.");
+        const gerente = (
+          await db.query(
+            "SELECT id, area_id, setor_id FROM gerentes WHERE id=$1 AND ativo",
+            [d.gerente_id],
           )
-            throw new HttpError(
-              400,
-              "Setor deve pertencer à área selecionada.",
-            );
-          if (
-            !(
-              await db.query(
-                "SELECT id FROM gerentes WHERE id=$1 AND area_id=$2 AND ativo",
-                [d.gerente_id, d.area_id],
-              )
-            ).rowCount
-          )
-            throw new HttpError(400, "Gerente deve estar ativo na mesma área.");
-        }
+        ).rows[0];
+        if (!gerente)
+          throw new HttpError(400, "Gerente responsável deve estar cadastrado e ativo.");
+        if (gerente.area_id && gerente.area_id !== d.area_id)
+          throw new HttpError(400, "Gerente responsável deve pertencer à mesma área técnica.");
       }
+
       const keys = Object.keys(d),
         values = keys.map((k) =>
           k === "feriados" ? JSON.stringify(d[k]) : d[k],

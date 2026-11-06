@@ -83,7 +83,7 @@ export async function validateReferences(db, d, user) {
     )
   ).rows.map((x) => x.id);
   const conflicts = [...new Set([...d.conflitos, ...matched])];
-  if (conflicts.includes(gestor.usuario_id))
+  if (gestor.usuario_id && conflicts.includes(gestor.usuario_id))
     throw new HttpError(
       409,
       "O gestor selecionado possui conflito de interesses.",
@@ -93,7 +93,13 @@ export async function validateReferences(db, d, user) {
 export async function validManager(db, id, area) {
   const row = (
     await db.query(
-      `SELECT g.* FROM gestores g JOIN usuarios u ON u.id=g.usuario_id JOIN gerentes ge ON ge.id=g.gerente_id JOIN usuarios gu ON gu.id=ge.usuario_id WHERE g.id=$1 AND g.area_id=$2 AND g.ativo AND u.ativo AND ge.ativo AND gu.ativo AND EXISTS(SELECT 1 FROM usuario_perfis up JOIN perfis p ON p.id=up.perfil_id WHERE up.usuario_id=u.id AND p.codigo='GESTOR')`,
+      `SELECT g.*, ge.nome as gerente_nome, ge.ativo as gerente_ativo
+       FROM gestores g
+       JOIN gerentes ge ON ge.id=g.gerente_id
+       LEFT JOIN usuarios u ON u.id=g.usuario_id
+       LEFT JOIN usuarios gu ON gu.id=ge.usuario_id
+       WHERE g.id=$1 AND g.area_id=$2 AND g.ativo AND ge.ativo
+         AND (g.usuario_id IS NULL OR (u.ativo AND EXISTS(SELECT 1 FROM usuario_perfis up JOIN perfis p ON p.id=up.perfil_id WHERE up.usuario_id=u.id AND p.codigo='GESTOR')))`,
       [id, area],
     )
   ).rows[0];
@@ -110,6 +116,7 @@ export async function forward(
 ) {
   const g = await validManager(db, managerId, m.area_id);
   if (
+    g.usuario_id &&
     (
       await db.query(
         "SELECT 1 FROM conflitos_manifestacao WHERE manifestacao_id=$1 AND usuario_id=$2",
@@ -138,7 +145,7 @@ export async function forward(
       JSON.stringify(policy),
     ],
   );
-  if (m.restrito)
+  if (m.restrito && g.usuario_id)
     await db.query(
       `INSERT INTO autorizacoes_restritas(manifestacao_id,usuario_id,concedido_por,justificativa) VALUES($1,$2,$3,$4) ON CONFLICT(manifestacao_id,usuario_id) DO UPDATE SET revogado_em=NULL,concedido_por=excluded.concedido_por,justificativa=excluded.justificativa`,
       [
@@ -154,10 +161,12 @@ export async function forward(
         m.gestor_id,
       ])
     ).rows[0];
-    await db.query(
-      "UPDATE autorizacoes_restritas SET revogado_em=now() WHERE manifestacao_id=$1 AND usuario_id=$2",
-      [m.id, old.usuario_id],
-    );
+    if (old?.usuario_id) {
+      await db.query(
+        "UPDATE autorizacoes_restritas SET revogado_em=now() WHERE manifestacao_id=$1 AND usuario_id=$2",
+        [m.id, old.usuario_id],
+      );
+    }
   }
   await history(db, m.id, user.id, "encaminhamento", {
     gestor_id: g.id,

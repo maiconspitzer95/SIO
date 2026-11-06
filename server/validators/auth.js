@@ -12,16 +12,17 @@ export const loginSchema = z
   .strict();
 export const passwordSchema = z
   .string()
-  .min(12, "Use pelo menos 12 caracteres.")
-  .max(128);
+  .min(1, "Informe a senha.")
+  .max(6, "A senha deve ter no máximo 6 caracteres.");
 export const resetSchema = z
   .object({ token: z.string().regex(/^[a-f0-9]{64}$/), senha: passwordSchema })
   .strict();
 export function validate(schema, body) {
   const result = schema.safeParse(body);
   if (!result.success) {
+    const msg = result.error.issues.map((i) => i.message).join("; ");
     const e = new Error(
-      "Confira os campos informados. Senhas novas devem ter de 12 a 128 caracteres.",
+      msg || "Confira os campos informados. A senha deve ter no máximo 6 caracteres.",
     );
     e.status = 400;
     throw e;

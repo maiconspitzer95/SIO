@@ -85,6 +85,7 @@ try {
       "tests/authorization.test.js",
       "tests/integration.test.js",
       "tests/operations.test.js",
+      "tests/ajustes-sio.test.js",
     ],
     {
       stdio: "inherit",

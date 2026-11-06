@@ -3,6 +3,8 @@ import { ArrowRight, ShieldCheck, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { Brand } from "../components/Brand.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../services/api.js";
+import logoUrl from "../assets/santacasalogo.png";
+
 export function Login() {
   const auth = useAuth();
   const [recovery, setRecovery] = useState(false);
@@ -18,9 +20,14 @@ export function Login() {
     const data = new FormData(event.currentTarget);
     try {
       if (recovery) {
+        const novaSenha = String(data.get("senha") || "");
+        if (novaSenha.length > 6) {
+          setError("A senha deve ter no máximo 6 caracteres.");
+          return;
+        }
         await api("/auth/reset", {
           method: "POST",
-          body: { token: data.get("token").trim(), senha: data.get("senha") },
+          body: { token: data.get("token").trim(), senha: novaSenha },
         });
         setRecovery(false);
         setSuccess("Senha atualizada. Entre com a nova senha.");
@@ -60,8 +67,15 @@ export function Login() {
       </section>
       <section className="login-panel">
         <div className="login-box">
-          <div className="system-tag">
-            SIO <span>/</span> OUVIDORIA
+          <div className="login-institution-header">
+            <img
+              src={logoUrl}
+              alt="Santa Casa de Pelotas"
+              className="login-institution-logo"
+            />
+            <div className="system-tag">
+              SIO <span>/</span> OUVIDORIA
+            </div>
           </div>
           <h2>{recovery ? "Recuperar acesso" : "Bem-vindo ao SIO"}</h2>
           <p className="muted">
@@ -96,17 +110,17 @@ export function Login() {
               </label>
             )}
             <label>
-              {recovery ? "Nova senha" : "Senha"}
+              {recovery ? "Nova senha (máx. 6 caracteres)" : "Senha"}
               <div className="password-field">
                 <input
                   name="senha"
                   type={visible ? "text" : "password"}
                   autoComplete={recovery ? "new-password" : "current-password"}
-                  minLength={recovery ? 12 : 1}
-                  maxLength={128}
+                  minLength={1}
+                  maxLength={recovery ? 6 : 128}
                   required
                   placeholder={
-                    recovery ? "Pelo menos 12 caracteres" : "Digite sua senha"
+                    recovery ? "No máximo 6 caracteres" : "Digite sua senha"
                   }
                 />
                 <button

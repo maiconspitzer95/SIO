@@ -56,7 +56,7 @@ const config = {
   SESSION_ABSOLUTE_HOURS: 8,
   TRUST_PROXY: "0",
 };
-const password = randomBytes(24).toString("hex");
+const password = "p#123";
 let pool,
   app,
   users = {},
@@ -559,7 +559,7 @@ it("relatórios por período e exportações PDF/Excel preservam o escopo", asyn
   assert.ok(cells.includes("Retorno institucional"));
 });
 it("gestão de usuários impede autoelevação e permite inativação", async () => {
-  const u = await call(
+  await call("admin", "post", "/api/catalogs/users", { nome: "Falha", login: "falha_senha", email: "falha@example.invalid", senha: "maisDe6Caracteres", perfis: ["GESTOR"] }, 400); const u = await call(
     "admin",
     "post",
     "/api/catalogs/users",

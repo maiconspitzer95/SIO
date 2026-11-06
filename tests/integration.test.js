@@ -19,7 +19,7 @@ const config = {
   TRUST_PROXY: "0",
 };
 let pool, app, masterId;
-const password = randomBytes(20).toString("hex");
+const password = "p@123";
 before(async () => {
   if (!enabled) return;
   pool = createPool(config);
@@ -63,7 +63,7 @@ it("migrations são idempotentes e perfis persistem", async () => {
   assert.equal((await pool.query("SELECT * FROM perfis")).rowCount, 5);
   assert.equal(
     (await pool.query("SELECT * FROM schema_migrations")).rowCount,
-    2,
+    3,
   );
 });
 it("produção serve a SPA e emite cookie Secure com CSP atrás do proxy local", async () => {
@@ -217,7 +217,7 @@ it("recuperação usa hash, expira, é de uso único e revoga sessões", async (
     "INSERT INTO recuperacoes_senha(usuario_id,token_hash,expira_em) VALUES($1,$2,now()+interval '15 minutes')",
     [masterId, createHash("sha256").update(token).digest("hex")],
   );
-  const newPassword = randomBytes(20).toString("hex");
+  await anonymous.post("/api/auth/reset").set("Origin", config.APP_ORIGIN).set("X-CSRF-Token", body.csrfToken).send({ token, senha: "maisDe6" }).expect(400); const newPassword = "n#456";
   await anonymous
     .post("/api/auth/reset")
     .set("Origin", config.APP_ORIGIN)

@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData.js";
 import { api } from "../services/api.js";
 import { PageTitle } from "../components/PageTitle.jsx";
 import { Field, Select, Feedback, Pager } from "../components/Forms.jsx";
+
 const definitions = {
   areas_tecnicas: {
     label: "Áreas técnicas",
@@ -26,18 +27,16 @@ const definitions = {
     label: "Gerentes",
     fields: {
       nome: "Nome",
-      usuario_id: "Usuário vinculado",
-      area_id: "Área de responsabilidade",
+      setor_id: "Setor",
     },
   },
   gestores: {
     label: "Gestores",
     fields: {
       nome: "Nome",
-      usuario_id: "Usuário vinculado",
-      area_id: "Área",
+      area_id: "Área técnica",
       setor_id: "Setor",
-      gerente_id: "Gerente superior",
+      gerente_id: "Gerente responsável",
     },
   },
   users: {
@@ -65,6 +64,7 @@ const definitions = {
     },
   },
 };
+
 const booleanFields = [
   "ativo",
   "restrito",
@@ -73,25 +73,32 @@ const booleanFields = [
   "continuo",
   "aprovado",
 ];
+
 const relations = {
   area_id: "areas_tecnicas",
   usuario_id: "pessoas",
   setor_id: "setores",
   gerente_id: "gerentes",
 };
+
 export function Catalogs() {
   const [tab, setTab] = useState("areas_tecnicas"),
     [editing, setEditing] = useState(null),
     [form, setForm] = useState(null),
     [search, setSearch] = useState(""),
+    [filterArea, setFilterArea] = useState(""),
+    [filterSetor, setFilterSetor] = useState(""),
+    [filterStatus, setFilterStatus] = useState("todos"),
     [page, setPage] = useState(1),
     [descending, setDescending] = useState(false),
     [error, setError] = useState(""),
     [success, setSuccess] = useState(""),
     [busy, setBusy] = useState(false);
+
   const records = useData(`/catalogs/${tab}`),
     lookups = useData("/catalogs/lookups");
   const def = definitions[tab];
+
   function open(row) {
     setEditing(row?.id || null);
     const d = { ativo: row?.ativo ?? true };
@@ -118,9 +125,41 @@ export function Catalogs() {
     setError("");
     setSuccess("");
   }
+
   function change(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      if (tab === "gestores" && key === "area_id") {
+        const sectorBelongs = (lookups.data?.setores || []).some(
+          (s) => s.id === next.setor_id && s.area_id === value,
+        );
+        if (!sectorBelongs) next.setor_id = "";
+        next.gerente_id = "";
+      }
+      return next;
+    });
   }
+
+  async function toggleActive(row) {
+    const actionLabel = row.ativo ? "inativar" : "ativar";
+    if (!confirm(`Deseja realmente ${actionLabel} "${row.nome}"?`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/catalogs/${tab}/${row.id}`, {
+        method: "PUT",
+        body: { ...row, ativo: !row.ativo },
+      });
+      setSuccess(`Cadastro ${row.ativo ? "inativado" : "ativado"} com sucesso.`);
+      records.reload();
+      lookups.reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(e) {
     e.preventDefault();
     if (
@@ -135,7 +174,36 @@ export function Catalogs() {
     setError("");
     try {
       const body = { ...form };
-      if (tab === "users" && !body.senha) delete body.senha;
+      if (tab === "users") {
+        if (!body.senha) delete body.senha;
+        else if (body.senha.length > 6) {
+          setError("A senha deve ter no máximo 6 caracteres.");
+          setBusy(false);
+          return;
+        }
+      }
+      if (tab === "gerentes" && !body.setor_id) {
+        setError("Selecione o setor do gerente.");
+        setBusy(false);
+        return;
+      }
+      if (tab === "gestores") {
+        if (!body.area_id) {
+          setError("Selecione a área técnica.");
+          setBusy(false);
+          return;
+        }
+        if (!body.setor_id) {
+          setError("Selecione o setor.");
+          setBusy(false);
+          return;
+        }
+        if (!body.gerente_id) {
+          setError("Selecione o gerente responsável.");
+          setBusy(false);
+          return;
+        }
+      }
       if (tab === "prazos") {
         body.feriados = body.feriados.split(/\s+/).filter(Boolean);
         for (const k of ["quantidade", "alerta_horas"])
@@ -146,7 +214,7 @@ export function Catalogs() {
         body,
       });
       setForm(null);
-      setSuccess("Cadastro salvo.");
+      setSuccess("Cadastro salvo com sucesso.");
       records.reload();
       lookups.reload();
     } catch (e) {
@@ -155,15 +223,35 @@ export function Catalogs() {
       setBusy(false);
     }
   }
+
   const all = (records.data?.items || [])
-    .filter((r) =>
-      (r.nome + " " + (r.login || ""))
+    .filter((r) => {
+      const matchText = (
+        (r.nome || "") +
+        " " +
+        (r.login || "") +
+        " " +
+        (r.area_nome || "") +
+        " " +
+        (r.setor_nome || "") +
+        " " +
+        (r.gerente_nome || "")
+      )
         .toLowerCase()
-        .includes(search.toLowerCase()),
-    )
+        .includes(search.toLowerCase());
+      if (!matchText) return false;
+      if (tab === "gestores") {
+        if (filterArea && r.area_id !== filterArea) return false;
+        if (filterSetor && r.setor_id !== filterSetor) return false;
+      }
+      if (filterStatus === "ativo" && !r.ativo) return false;
+      if (filterStatus === "inativo" && r.ativo) return false;
+      return true;
+    })
     .sort(
       (a, b) => a.nome.localeCompare(b.nome, "pt-BR") * (descending ? -1 : 1),
     );
+
   return (
     <>
       <PageTitle eyebrow="ADMINISTRAÇÃO" title="Cadastros institucionais">
@@ -179,6 +267,9 @@ export function Catalogs() {
               setForm(null);
               setPage(1);
               setSearch("");
+              setFilterArea("");
+              setFilterSetor("");
+              setFilterStatus("todos");
               setError("");
               setSuccess("");
             }}
@@ -255,8 +346,29 @@ export function Catalogs() {
                   );
                 if (relations[key]) {
                   let items = lookups.data?.[relations[key]] || [];
-                  if (["setor_id", "gerente_id"].includes(key))
-                    items = items.filter((r) => r.area_id === form.area_id);
+                  if (key === "setor_id") {
+                    if (tab === "gestores" && form.area_id) {
+                      items = items.filter((r) => r.area_id === form.area_id);
+                    }
+                  } else if (key === "gerente_id") {
+                    items = items.filter((r) => r.ativo);
+                    if (form.setor_id) {
+                      const inSector = items.filter(
+                        (r) => r.setor_id === form.setor_id,
+                      );
+                      if (inSector.length > 0) items = inSector;
+                      else if (form.area_id)
+                        items = items.filter(
+                          (r) => !r.area_id || r.area_id === form.area_id,
+                        );
+                    } else if (form.area_id) {
+                      items = items.filter(
+                        (r) => !r.area_id || r.area_id === form.area_id,
+                      );
+                    }
+                  } else if (key === "area_id") {
+                    items = items.filter((r) => r.ativo);
+                  }
                   return (
                     <Field key={key} label={label}>
                       <Select
@@ -306,6 +418,10 @@ export function Catalogs() {
                               ? "number"
                               : "text"
                       }
+                      maxLength={key === "senha" ? 6 : undefined}
+                      placeholder={
+                        key === "senha" ? "Máximo de 6 caracteres" : undefined
+                      }
                       value={form[key]}
                       onChange={(e) => change(key, e.target.value)}
                       autoComplete={key === "senha" ? "new-password" : "off"}
@@ -330,7 +446,7 @@ export function Catalogs() {
         </form>
       )}
       <section className="card">
-        <div className="toolbar">
+        <div className="toolbar catalogs-toolbar">
           <input
             aria-label="Pesquisar cadastro"
             placeholder="Pesquisar por nome…"
@@ -340,6 +456,54 @@ export function Catalogs() {
               setPage(1);
             }}
           />
+          {tab === "gestores" && (
+            <>
+              <select
+                aria-label="Filtrar por área"
+                value={filterArea}
+                onChange={(e) => {
+                  setFilterArea(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Todas as áreas</option>
+                {(lookups.data?.areas_tecnicas || []).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Filtrar por setor"
+                value={filterSetor}
+                onChange={(e) => {
+                  setFilterSetor(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Todos os setores</option>
+                {(lookups.data?.setores || [])
+                  .filter((s) => !filterArea || s.area_id === filterArea)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+              </select>
+            </>
+          )}
+          <select
+            aria-label="Filtrar por situação"
+            value={filterStatus}
+            onChange={(e) => {
+              setFilterStatus(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="todos">Todas as situações</option>
+            <option value="ativo">Somente ativos</option>
+            <option value="inativo">Somente inativos</option>
+          </select>
           <button
             className="secondary"
             onClick={() => setDescending(!descending)}
@@ -354,34 +518,171 @@ export function Catalogs() {
           <p className="loading">Carregando…</p>
         ) : (
           <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Situação</th>
-                  <th>Informações</th>
-                  <th>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {all.slice((page - 1) * 25, page * 25).map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.nome}</td>
-                    <td>{row.ativo ? "Ativo" : "Inativo"}</td>
-                    <td>
-                      {row.login || row.descricao || row.tipo || ""}
-                      {row.bloqueado ? " · Bloqueado" : ""}
-                      {row.perfis?.join(" · ")}
-                    </td>
-                    <td>
-                      <button className="text-button" onClick={() => open(row)}>
-                        Editar
-                      </button>
-                    </td>
+            {tab === "gerentes" ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Setor</th>
+                    <th>Situação</th>
+                    <th>Ações</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {all.slice((page - 1) * 25, page * 25).map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.nome}</strong>
+                      </td>
+                      <td>
+                        {row.setor_nome ||
+                          lookups.data?.setores?.find(
+                            (s) => s.id === row.setor_id,
+                          )?.nome ||
+                          "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`status-badge ${row.ativo ? "active" : "inactive"}`}
+                        >
+                          {row.ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            className="text-button"
+                            onClick={() => open(row)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className={`text-button ${row.ativo ? "danger" : ""}`}
+                            onClick={() => toggleActive(row)}
+                          >
+                            {row.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : tab === "gestores" ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Gestor</th>
+                    <th>Área técnica</th>
+                    <th>Setor</th>
+                    <th>Gerente responsável</th>
+                    <th>Situação</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {all.slice((page - 1) * 25, page * 25).map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.nome}</strong>
+                      </td>
+                      <td>
+                        {row.area_nome ||
+                          lookups.data?.areas_tecnicas?.find(
+                            (a) => a.id === row.area_id,
+                          )?.nome ||
+                          "—"}
+                      </td>
+                      <td>
+                        {row.setor_nome ||
+                          lookups.data?.setores?.find(
+                            (s) => s.id === row.setor_id,
+                          )?.nome ||
+                          "—"}
+                      </td>
+                      <td>
+                        {row.gerente_nome ||
+                          lookups.data?.gerentes?.find(
+                            (g) => g.id === row.gerente_id,
+                          )?.nome ||
+                          "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={`status-badge ${row.ativo ? "active" : "inactive"}`}
+                        >
+                          {row.ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            className="text-button"
+                            onClick={() => open(row)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className={`text-button ${row.ativo ? "danger" : ""}`}
+                            onClick={() => toggleActive(row)}
+                          >
+                            {row.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Situação</th>
+                    <th>Informações</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {all.slice((page - 1) * 25, page * 25).map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.nome}</strong>
+                      </td>
+                      <td>
+                        <span
+                          className={`status-badge ${row.ativo ? "active" : "inactive"}`}
+                        >
+                          {row.ativo ? "Ativo" : "Inativo"}
+                        </span>
+                      </td>
+                      <td>
+                        {row.login || row.descricao || row.tipo || ""}
+                        {row.bloqueado ? " · Bloqueado" : ""}
+                        {row.perfis?.join(" · ")}
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            className="text-button"
+                            onClick={() => open(row)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className={`text-button ${row.ativo ? "danger" : ""}`}
+                            onClick={() => toggleActive(row)}
+                          >
+                            {row.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
             {!all.length && (
               <p className="empty-state">Nenhum cadastro encontrado.</p>
             )}
@@ -393,6 +694,7 @@ export function Catalogs() {
     </>
   );
 }
+
 function Settings() {
   const data = useData("/catalogs/settings"),
     [value, setValue] = useState(null),

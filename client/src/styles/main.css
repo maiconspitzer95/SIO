@@ -79,6 +79,14 @@ h3 {
   border: 1px solid #aec3d6;
   border-radius: 12px;
   color: #3278a0;
+  background: #ffffff;
+  padding: 3px;
+  overflow: hidden;
+}
+.brand-icon .brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .brand strong {
   font-size: 21px;
@@ -95,8 +103,9 @@ h3 {
   color: #fff;
 }
 .brand.light .brand-icon {
-  color: #a2c9df;
-  border-color: #46627c;
+  background: #ffffff;
+  border-color: #aec3d6;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 .login-page {
   display: grid;
@@ -1051,7 +1060,15 @@ textarea:focus-visible {
   color: #90701e;
 }
 .overdue-row {
-  background: #fffafa;
+  background-color: #fef2f2 !important;
+  color: #991b1b !important;
+}
+.overdue-row td {
+  background-color: #fef2f2 !important;
+  color: #991b1b !important;
+}
+.overdue-row td:first-child {
+  border-left: 4px solid #dc2626 !important;
 }
 .case-summary {
   display: flex;
@@ -1352,3 +1369,79 @@ input[type="file"] {
   }
 }
 .field{display:grid;gap:8px;font-size:12px;font-weight:600}.field>label{margin:0}
+
+.topbar-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar-logo {
+  height: 24px;
+  width: auto;
+  max-width: 90px;
+  object-fit: contain;
+}
+.login-institution-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.login-institution-logo {
+  height: 48px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+}
+.catalogs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.catalogs-toolbar select {
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.text-button.danger {
+  color: #c5221f;
+}
+.text-button.danger:hover {
+  color: #a51d1a;
+  text-decoration: underline;
+}
+.status-badge.active {
+  background: #e6f4ea;
+  color: #137333;
+}
+.status-badge.inactive {
+  background: #f1f3f4;
+  color: #5f6368;
+}
+.overdue-card {
+  border: 1px solid #fca5a5;
+  background: #fffcfc;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+.overdue-card .section-heading h2 {
+  color: #991b1b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.overdue-badge {
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid #fca5a5;
+}

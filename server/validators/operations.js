@@ -29,14 +29,21 @@ export const catalogSchemas = {
       bloqueado: z.boolean().default(false),
     })
     .strict(),
-  gerentes: z.object({ ...base, usuario_id: uuid, area_id: uuid }).strict(),
+  gerentes: z
+    .object({
+      ...base,
+      setor_id: uuid.optional(),
+      usuario_id: uuid.nullable().optional(),
+      area_id: uuid.optional(),
+    })
+    .strict(),
   gestores: z
     .object({
       ...base,
-      usuario_id: uuid,
       area_id: uuid,
       setor_id: uuid,
       gerente_id: uuid,
+      usuario_id: uuid.nullable().optional(),
     })
     .strict(),
   prazos: z
@@ -76,7 +83,11 @@ export const userSchema = z
       .trim()
       .regex(/^[a-z0-9._-]{3,80}$/),
     email: z.email(),
-    senha: z.string().min(12).max(128).optional(),
+    senha: z
+      .string()
+      .min(1, "A senha deve ter no máximo 6 caracteres.")
+      .max(6, "A senha deve ter no máximo 6 caracteres.")
+      .optional(),
     perfis: z
       .array(z.enum(["MASTER", "OUVIDORIA", "GESTOR", "GERENTE", "DIRECAO"]))
       .min(1),

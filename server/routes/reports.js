@@ -49,12 +49,18 @@ export function reportRoutes(pool) {
         values,
       )
     ).rows;
+    const overdue = (
+      await pool.query(
+        `SELECT m.id,'OUV-'||lpad(m.numero::text,greatest(6,length(m.numero::text)),'0') registro,m.tipo,a.nome area_nome,g.nome gestor_nome,ge.nome gerente_nome,m.vencimento,m.alerta_gerente_em,${statusSql} status ${joins} WHERE ${sql} AND m.etapa IN ('encaminhada','complementacao') AND m.vencimento<now() ORDER BY m.vencimento ASC LIMIT 20`,
+        values,
+      )
+    ).rows;
     await audit(pool, {
       actor: req.user.id,
       event: "indicadores.consulta",
       requestId: req.id,
     });
-    res.json({ totals, groups, recent, upcoming });
+    res.json({ totals, groups, recent, upcoming, overdue });
   });
   r.get("/export/:format", async (req, res) => {
     if (!["pdf", "xlsx"].includes(req.params.format))
