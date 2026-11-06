@@ -15,16 +15,23 @@
     "password:issue": "node scripts/admin.js reset",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:integration": "npm run build && node scripts/test-postgres.js",
-    "test:ui": "npm run build && node scripts/test-postgres.js --ui"
+    "test:ui": "npm run build && node scripts/test-postgres.js --ui",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js"
   },
   "dependencies": {
     "argon2": "^0.44.0",
     "connect-pg-simple": "^10.0.0",
     "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
+    "file-type": "^22.3.0",
     "helmet": "^8.1.0",
     "lucide-react": "^0.468.0",
+    "luxon": "^3.7.2",
+    "multer": "^2.5.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -37,5 +44,10 @@
     "concurrently": "^9.2.1",
     "supertest": "^7.1.4",
     "vite": "^7.2.2"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

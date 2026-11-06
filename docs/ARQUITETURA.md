@@ -1,35 +1,50 @@
-# Arquitetura e evolução
+# Arquitetura do SIO
 
-## Etapa 1
+## Componentes
 
-React + Vite em `client/`, Express em `server/`, PostgreSQL como fonte de usuários, perfis, permissões, sessões, recuperação, limitação de tentativas e auditoria. O build é servido pelo Express em produção. Não há portal público nem rota de criação de manifestações nesta etapa.
+- React/Vite: navegação, formulários, cadastros, acompanhamento, notificações, indicadores e exportações.
+- Express: autenticação, autorização, validação, transações e serviço agendado de alertas; frontend compilado servido na mesma porta.
+- PostgreSQL: única fonte de dados institucionais, sessões, tokens de recuperação em hash, limites de tentativas, histórico e auditoria.
+- Armazenamento privado: arquivos PDF/PNG/JPEG fora das rotas estáticas, referências e SHA-256 no PostgreSQL.
 
-Fluxo HTTP: identificador de requisição → Helmet → limite persistente → JSON com tamanho limitado → sessão PostgreSQL → CSRF (origem exata + token) → autenticação → permissão → rota/repositório. Consultas usam parâmetros. Senhas usam Argon2id (64 MiB, três iterações). Sessões são rotacionadas no login, têm expiração por inatividade e absoluta, e verificam a situação e a versão do usuário em cada requisição autenticada. Perfis e permissões são relidos do banco, sem cache de autoridade no navegador.
+## Migrations
 
-`services/authorization.js` define uma política inicial por caso para integrar e estender na Etapa 3. Seus testes unitários **não equivalem a testar o futuro módulo de manifestações**. Consultas, exportações, anexos e indicadores deverão aplicar a mesma restrição no SQL antes de paginar ou agregar. Identidade de contatos, conflitos, setores e concessões ainda precisarão de entidades persistidas e verificação institucional.
+`001_foundation.sql`: usuários, perfis, permissões, vínculos, sessões, recuperação, limites de acesso e auditoria.
 
-Master tem somente permissões técnicas. Assédio e violência não possuem fluxo operacional publicado. A regra `operationalBlocked` deve prevalecer mesmo sobre concessões individuais. A concessão de acesso restrito deverá exigir usuário habilitado, justificativa, escopo, validade e autoridade institucional; o administrador técnico não pode conceder a si próprio acesso ao conteúdo por uma tela administrativa genérica.
+`002_operations.sql`: áreas, setores, motivos, gerentes, gestores, políticas de prazo, parâmetros, manifestações, contatos, conflitos, autorizações, encaminhamentos, respostas, histórico, discussões, anexos, alertas e notificações. A sequência PostgreSQL gera números únicos sem disputa entre processos. Sequências podem ter lacunas após rollback; números nunca são reutilizados.
 
-## Próximas migrations, sem antecipar regras institucionais
+Migrations usam advisory lock, transações e checksum. Não há migração destrutiva ou importação de casos fictícios. Histórico, respostas, encaminhamentos, discussões e auditoria têm triggers de imutabilidade; manifestações não aceitam DELETE/TRUNCATE. Administradores do banco continuam sendo uma fronteira de confiança externa à aplicação.
 
-2. Áreas, setores/locais, motivos (restrição e homologação), gerentes, gestores, parâmetros de prazos, calendários, escopos de setor e gestão de usuários. Inativação em vez de exclusão.
-3. Manifestações (UUID + sequência PostgreSQL), contatos, autorizações restritas, histórico e edições versionadas com justificativa. Pessoa identificada e prevenção de conflito de interesses. Rascunho visível somente à operação autorizada.
-4. Encaminhamentos, respostas versionadas, validação, complementações, discussões e anexos privados. Transações e bloqueio de linha para transições; verificação de versão para edições concorrentes. Uploads e downloads deverão aplicar autorização por caso e validação real de formato/tamanho.
-5. Prazos calculados desde envio efetivo conforme configuração homologada. Troca de gestor preserva vencimento. Alertas e notificações com chave única por evento e processamento transacional idempotente. Datas do primeiro atraso e conclusão tardia preservadas.
-6. Indicadores e exportações com o mesmo filtro de acesso do detalhe. Não agregar casos restritos para destinatários sem autorização. Diferenciar as datas de registro, ocorrência, envio, resposta e conclusão.
-7. Homologação de segurança, identidade, sigilo, recuperação, retenção, disponibilidade e restauração, incluindo teste de carga e revisão de permissões com representantes institucionais.
+## Autorização
 
-As entidades dos módulos futuros não são tabelas vazias nesta etapa: serão criadas por migrations aditivas junto com as regras correspondentes. Não editar `001_foundation.sql` depois de aplicada; checksums impedem essa prática.
+`server/repositories/cases.js` centraliza a expressão SQL de escopo. A condição é aplicada antes de ordenar, paginar ou agregar e reutilizada nas notificações e relatórios. Um usuário precisa estar ativo, ter permissão de acompanhamento, satisfazer perfil/atribuição ou concessão individual, não estar em conflito e ter autorização individual quando o caso é restrito. Categoria operacionalmente bloqueada prevalece sobre qualquer concessão.
 
-## Operação e proteção dos dados
+A Ouvidoria opera casos institucionais; rascunhos são privados do autor. Gestores acessam suas atribuições e gerentes seguem o vínculo do gestor. Direção depende de autorização por caso, incluindo para indicadores, que não contam registros ocultos. Master isolado tem somente administração técnica. Dados de contato ficam limitados à Ouvidoria. Informações do histórico de edição contendo versões anteriores são ocultadas de outros perfis.
 
-- Usar conta PostgreSQL separada para migrations/provisionamento e conta de execução sem DDL, superuser ou capacidade de conceder perfis. A conta de execução precisa SELECT nas tabelas de autorização, INSERT/SELECT em auditoria, operações de sessão/limites e UPDATE específico nas tabelas de senha. Conceder privilégios de sequência para auditoria. O trigger bloqueia UPDATE/DELETE/TRUNCATE de auditoria; administradores do banco continuam uma fronteira de confiança externa.
-- HTTPS termina em proxy local confiável no Windows Server. Express escuta loopback. `TRUST_PROXY=1` somente nesse cenário. Cookies de produção usam `__Host-`, Secure, HttpOnly, SameSite=Strict.
-- TLS com validação de certificado para PostgreSQL remoto. Criptografia em repouso depende de BitLocker/volume e proteção dos backups; não está implementada como criptografia de campos nesta etapa.
-- Backups devem incluir PostgreSQL e, quando houver anexos, snapshot consistente do armazenamento privado. Definir RPO/RTO, retenção, ACL, criptografia, armazenamento externo e testes regulares antes de produção. Nenhuma rotina elimina dados institucionais; somente sessões e contadores expirados são limpos.
-- Não usar uma instância PostgreSQL de testes como servidor de produção. `.env`, logs, dumps e anexos não pertencem ao repositório. Evitar sincronizar dados operacionais por OneDrive; o código atual está na pasta escolhida pelo usuário.
-- Recuperação inicial é assistida por operador local autorizado, sem envio de e-mail. O operador verifica identidade, emite um token e entrega ao titular por canal institucional aprovado. O banco guarda só SHA-256 do token. Uso único, validade de 15 minutos; troca revoga sessões e outros tokens.
+Concessões individuais são feitas pela Ouvidoria, com justificativa e histórico. Encaminhamento restrito autoriza o gestor efetivamente atribuído; reatribuição revoga a concessão anterior. Conflitos também excluem o caso das consultas agregadas. Associação de contato por usuário, nome/e-mail e declaração operacional reduzem registro próprio; a validação humana da identidade continua necessária.
 
-## Limites desta entrega
+`role-capabilities.js` define o teto de permissões por perfil. O administrador pode reduzir/restaurar permissões, sem habilitar abertura/conclusão em perfis indevidos. Mudanças revogam sessões. O backend também exige o perfil Ouvidoria para criação/conclusão, além da permissão específica.
 
-Não há afirmação de conformidade LGPD ou prontidão para produção hospitalar. A Etapa 1 não possui registros de pacientes, fluxo de denúncia, upload, exportação, regras de retenção aprovadas, notificações ou indicadores operacionais. A validação jurídica/institucional de denúncias e os controles específicos de seus módulos permanecem obrigatórios antes de qualquer ativação.
+## Transações e concorrência
+
+Criação persiste caso, contato, conflitos, autorização, histórico e eventual encaminhamento em uma transação. Edições/ações bloqueiam a linha da manifestação e verificam `versao`, rejeitando telas desatualizadas com 409. Alterações relevantes registram histórico; respostas e versões anteriores são preservadas. Edição não permite trocar área/motivo/prazo; reatribuição tem ação e justificativa próprias.
+
+O fluxo interno é rascunho → encaminhada → validação → aprovada → concluída, com complementação retornando ao gestor. O status visual deriva de etapa, vencimento e horário atual, sem edição manual. Conclusão guarda a resposta final, a forma de retorno e a condição de atraso.
+
+## Prazos e jobs
+
+O prazo começa no envio efetivo. A política aprovada é copiada para `prazo_snapshot`; alterações administrativas não recalculam envios anteriores. Dias úteis usam calendário/feriados configurados e fuso America/Sao_Paulo. Judicial exige confirmação de 24 horas contínuas. Troca de gestor e complementação preservam vencimento.
+
+O serviço executa ao iniciar e a cada minuto. Advisory lock transacional e `UNIQUE(manifestacao_id,evento)` evitam duplicidade entre processos/restarts. Notificações possuem chave idempotente por destinatário/evento. Respostas tardias também permitem recuperação do alerta que não foi processado durante uma interrupção.
+
+## Anexos, backup e recuperação
+
+Uploads são autenticados antes de receber o arquivo, limitados a 10 MB, identificados pelo conteúdo e armazenados com nome aleatório. Apenas Ouvidoria e gestor atribuído em etapa apropriada podem anexar. Downloads revalidam o caso e usam Content-Disposition attachment. A transação remove arquivos se a gravação no banco falhar; um crash entre arquivo e commit pode deixar arquivo órfão, sem referência pública. Não há limpeza automática que arrisque remover evidências.
+
+Backup completo usa pg_dump e copia os arquivos imutáveis após o snapshot, com manifesto e SHA-256. A restauração valida arquivos, cria banco/pasta novos e confere referências. O runner valida contagens de todas as entidades operacionais e hashes, sem tocar no banco configurado pelo usuário.
+
+## Segurança operacional
+
+Argon2id, sessões PostgreSQL, rotação de sessão, expiração por inatividade/absoluta, CSRF por token e origem, Helmet/CSP, SQL parametrizado, validação de campos, limites persistentes de tentativas e auditoria técnica. Logs comuns não incluem relatos, contatos, tokens ou senhas. Recuperação assistida sem e-mail usa token aleatório, hash, validade e uso único.
+
+A instituição precisa configurar HTTPS, TLS de banco remoto, contas de menor privilégio, criptografia dos volumes/backups, ACL, antivírus/endpoint, retenção aprovada, RPO/RTO e recuperação de desastre. O software não substitui avaliação jurídica, homologação hospitalar ou verificação humana de conflito de interesses. Assédio e violência continuam bloqueados operacionalmente até homologação e alteração controlada do fluxo.

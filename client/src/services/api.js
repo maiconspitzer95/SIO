@@ -1,6 +1,7 @@
 let csrfToken;
 export async function api(path, options = {}) {
   const method = options.method || "GET";
+  const multipart = options.body instanceof FormData;
   if (method !== "GET" && !csrfToken) {
     const response = await fetch("/api/auth/csrf", {
       credentials: "same-origin",
@@ -13,11 +14,17 @@ export async function api(path, options = {}) {
     credentials: "same-origin",
     ...options,
     headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !multipart
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...(method !== "GET" ? { "X-CSRF-Token": csrfToken } : {}),
       ...options.headers,
     },
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body
+      ? multipart
+        ? options.body
+        : JSON.stringify(options.body)
+      : undefined,
   });
   const data = response.status === 204 ? {} : await response.json();
   if (!response.ok) {

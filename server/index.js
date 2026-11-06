@@ -1,6 +1,7 @@
 import { readConfig } from "./config/env.js";
 import { createPool } from "./config/database.js";
 import { createApp } from "./app.js";
+import { processAlerts } from "./services/alerts.js";
 
 const config = readConfig();
 const pool = createPool(config);
@@ -9,6 +10,13 @@ pool.on("error", () =>
 );
 await pool.query("SELECT versao FROM schema_migrations LIMIT 1");
 const app = await createApp(pool, config);
+const checkAlerts = () =>
+  processAlerts(pool).catch(() =>
+    console.error("Falha na verificação de prazos."),
+  );
+await checkAlerts();
+const alertTimer = setInterval(checkAlerts, 60000);
+alertTimer.unref();
 const server = app.listen(config.PORT, config.HOST, () =>
   console.log(`SIO disponível na porta ${config.PORT}.`),
 );
@@ -28,6 +36,7 @@ function stop() {
   if (closing) return;
   closing = true;
   clearInterval(cleanup);
+  clearInterval(alertTimer);
   const timer = setTimeout(() => process.exit(1), 9000);
   timer.unref();
   server.close(async () => {

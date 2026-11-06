@@ -5,6 +5,8 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import pg from "pg";
+import { backup } from './backup.js';
+import { restore } from './restore.js';
 
 // Cluster descartável dedicado: nunca usa DATABASE_URL e nunca altera bancos existentes.
 const root = await mkdtemp(join(tmpdir(), "sio-test-"));
@@ -82,10 +84,15 @@ try {
       "--test-concurrency=1",
       "tests/authorization.test.js",
       "tests/integration.test.js",
+      "tests/operations.test.js",
     ],
     {
       stdio: "inherit",
-      env: { ...process.env, TEST_DATABASE_URL: connectionString },
+      env: {
+        ...process.env,
+        TEST_DATABASE_URL: connectionString,
+        TEST_STORAGE_PATH: join(root, "storage"),
+      },
       windowsHide: true,
     },
   );
@@ -95,6 +102,10 @@ try {
     await browserSmoke(connectionString);
   }
   let pool = new pg.Pool({ connectionString });
+  const usersBefore = (await pool.query("SELECT count(*)::int n FROM usuarios"))
+    .rows[0].n;
+  const countsBefore={};
+  for(const table of ['manifestacoes','encaminhamentos','respostas','historico_manifestacoes','notificacoes','alertas','anexos','discussoes_direcao'])countsBefore[table]=(await pool.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n;
   const before = (
     await pool.query("SELECT count(*)::int AS count FROM auditoria")
   ).rows[0].count;
@@ -137,10 +148,17 @@ try {
   const users = (
     await pool.query("SELECT count(*)::int AS count FROM usuarios")
   ).rows[0].count;
-  if (restored !== before || users !== 5)
+  if (restored !== before || users !== usersBefore)
     throw new Error("Restauração inconsistente.");
   await pool.end();
   console.log("OK: backup e restauração PostgreSQL verificados.");
+  const backupConfig={DATABASE_URL:connectionString,ssl:false,STORAGE_PATH:join(root,'storage')};
+  const directory=await backup(backupConfig,join(root,'full-backups'));
+  await restore(backupConfig,directory,'sio_restore_full',join(root,'restored-storage'));
+  const fullUrl=new URL(connectionString);fullUrl.pathname='/sio_restore_full';
+  const restoredPool=new pg.Pool({connectionString:fullUrl.toString()});
+  try{for(const [table,count] of Object.entries(countsBefore)){if((await restoredPool.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n!==count)throw new Error('Contagem divergente após restaurar '+table);}}finally{await restoredPool.end();}
+  console.log('OK: backup completo restaurado com anexos, checksums e contagens de todas as entidades operacionais.');
 } catch (e) {
   console.error(e.message);
   process.exitCode = 1;

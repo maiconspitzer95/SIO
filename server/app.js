@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 import { authRoutes } from "./routes/auth.js";
 import { adminRoutes } from "./routes/admin.js";
 import { csrf, requireAuth, rateLimit } from "./middlewares/security.js";
+import { catalogRoutes } from "./routes/catalogs.js";
+import { caseRoutes } from "./routes/cases.js";
+import { notificationRoutes } from "./routes/notifications.js";
+import { reportRoutes } from "./routes/reports.js";
+import { attachmentRoutes } from "./routes/attachments.js";
 
 export async function createApp(pool, config) {
   const app = express();
@@ -77,6 +82,19 @@ export async function createApp(pool, config) {
   app.use("/api", csrf(config));
   app.use("/api/auth", await authRoutes(pool, config));
   app.use("/api/admin", requireAuth(pool, config), adminRoutes(pool));
+  app.use("/api/catalogs", requireAuth(pool, config), catalogRoutes(pool));
+  app.use(
+    "/api/cases/:caseId/attachments",
+    requireAuth(pool, config),
+    attachmentRoutes(pool, config),
+  );
+  app.use("/api/cases", requireAuth(pool, config), caseRoutes(pool));
+  app.use(
+    "/api/notifications",
+    requireAuth(pool, config),
+    notificationRoutes(pool),
+  );
+  app.use("/api/reports", requireAuth(pool, config), reportRoutes(pool));
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "Recurso não encontrado." }),
   );
@@ -89,7 +107,12 @@ export async function createApp(pool, config) {
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     const status =
-      err.status || (err.type === "entity.parse.failed" ? 400 : 500);
+      err.status ||
+      (["23505", "23503", "23514"].includes(err.code)
+        ? 409
+        : err.type === "entity.parse.failed"
+          ? 400
+          : 500);
     if (status >= 500)
       console.error(
         JSON.stringify({
@@ -100,15 +123,15 @@ export async function createApp(pool, config) {
             : "INTERNAL",
         }),
       );
-    res
-      .status(status)
-      .json({
-        error:
-          status >= 500
-            ? "Não foi possível concluir a solicitação."
+    res.status(status).json({
+      error:
+        status >= 500
+          ? "Não foi possível concluir a solicitação."
+          : ["23505", "23503", "23514"].includes(err.code)
+            ? "Registro duplicado ou vínculo inválido. Confira os campos e cadastros relacionados."
             : err.message,
-        requestId: req.id,
-      });
+      requestId: req.id,
+    });
   });
   return app;
 }

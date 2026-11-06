@@ -63,7 +63,7 @@ it("migrations são idempotentes e perfis persistem", async () => {
   assert.equal((await pool.query("SELECT * FROM perfis")).rowCount, 5);
   assert.equal(
     (await pool.query("SELECT * FROM schema_migrations")).rowCount,
-    1,
+    2,
   );
 });
 it("produção serve a SPA e emite cookie Secure com CSP atrás do proxy local", async () => {
@@ -79,8 +79,14 @@ it("produção serve a SPA e emite cookie Secure com CSP atrás do proxy local",
     .expect(200);
   assert.match(response.headers["set-cookie"][0], /__Host-sio.sid=/);
   assert.match(response.headers["set-cookie"][0], /; Secure/);
-  assert.match(response.headers["content-security-policy"], /frame-ancestors 'none'/);
-  await request(production).get("/perfis").expect("Content-Type", /html/).expect(200);
+  assert.match(
+    response.headers["content-security-policy"],
+    /frame-ancestors 'none'/,
+  );
+  await request(production)
+    .get("/perfis")
+    .expect("Content-Type", /html/)
+    .expect(200);
 });
 it("login válido rotaciona sessão; cookie HttpOnly e SameSite; senha nunca retornada", async () => {
   const { agent, response } = await session();

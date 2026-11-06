@@ -1,12 +1,5 @@
-import {
-  ShieldCheck,
-  Database,
-  LockKeyhole,
-  ClipboardList,
-  ArrowUpRight,
-  Check,
-} from "lucide-react";
 import { Link } from "react-router-dom";
+import { ShieldCheck, ClipboardList, Settings } from "lucide-react";
 import { PageTitle } from "../components/PageTitle.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 export function Home() {
@@ -14,90 +7,60 @@ export function Home() {
   return (
     <>
       <PageTitle eyebrow="PAINEL INSTITUCIONAL" title="Visão geral">
-        Bem-vindo, {user.nome.split(" ")[0]}. Este é o seu ambiente de trabalho
-        na Ouvidoria.
+        Bem-vindo, {user.nome.split(" ")[0]}. Acesse suas atividades e acompanhe
+        as notificações no sino.
       </PageTitle>
       <section className="welcome-card">
         <div>
-          <span className="pill">ETAPA 1 · FUNDAÇÃO</span>
-          <h2>Uma base segura para cada atendimento.</h2>
+          <span className="pill">OUVIDORIA · SANTA CASA DE PELOTAS</span>
+          <h2>Escutar, acompanhar e responder.</h2>
           <p>
-            Autenticação, perfis de acesso e auditoria disponíveis. Os módulos
-            de atendimento serão habilitados nas próximas etapas.
+            Cada atendimento possui responsáveis, prazos e histórico. Seu perfil
+            determina as ações disponíveis.
           </p>
         </div>
-        <div className="welcome-icon">
-          <ShieldCheck size={68} strokeWidth={1} />
-        </div>
+        <ShieldCheck size={64} />
       </section>
       <div className="foundation-grid">
-        <article className="card feature-card">
-          <div className="feature-icon">
-            <LockKeyhole />
-          </div>
-          <h3>Acesso institucional</h3>
-          <p>Sessões protegidas e permissões vinculadas ao seu perfil.</p>
-          <span className="ready">
-            <Check size={14} /> Disponível
-          </span>
-        </article>
-        <article className="card feature-card">
-          <div className="feature-icon">
-            <Database />
-          </div>
-          <h3>Identificação individual</h3>
-          <p>Uma conta institucional para cada profissional autorizado.</p>
-          <span className="ready">
-            <Check size={14} /> Disponível
-          </span>
-        </article>
-        <article className="card feature-card">
-          <div className="feature-icon">
-            <ShieldCheck />
-          </div>
-          <h3>Rastreabilidade</h3>
-          <p>Eventos de autenticação registrados em auditoria técnica.</p>
-          <span className="ready">
-            <Check size={14} /> Disponível
-          </span>
-        </article>
-      </div>
-      <div className="home-bottom">
-        <section className="card module-placeholder">
-          <div className="section-heading">
-            <h2>Atendimento e indicadores</h2>
-            <span className="neutral-tag">Próximas etapas</span>
-          </div>
-          <div className="empty-state">
-            <ClipboardList size={38} strokeWidth={1.3} />
-            <h3>O atendimento ainda não está habilitado</h3>
+        {user.permissoes.includes("cadastros.gerenciar") && (
+          <Link to="/cadastros" className="card feature-card">
+            <Settings />
+            <h3>Cadastros institucionais</h3>
             <p>
-              Manifestações, prazos e relatórios serão disponibilizados após a
-              implementação e validação dos respectivos módulos.
+              Configure usuários, equipes, locais, motivos e regras de prazo.
             </p>
-          </div>
-        </section>
-        <section className="card access-card">
-          <h2>Seu acesso</h2>
-          <span className="muted small">PERFIS ATRIBUÍDOS</span>
-          <div className="profile-tags">
-            {user.perfis.map((p) => (
-              <span className="profile-tag" key={p}>
-                {p}
-              </span>
-            ))}
-          </div>
-          <p>
-            O acesso aos futuros casos também dependerá da atribuição e da
-            classificação de sigilo.
-          </p>
-          {user.permissoes.includes("usuarios.gerenciar") && (
-            <Link to="/perfis" className="inline-link">
-              Consultar permissões <ArrowUpRight size={16} />
-            </Link>
-          )}
-        </section>
+          </Link>
+        )}
+        {user.permissoes.includes("manifestacoes.acompanhar") && (
+          <Link to="/manifestacoes" className="card feature-card">
+            <ClipboardList />
+            <h3>Minhas manifestações</h3>
+            <p>Consulte os casos autorizados e registre suas tratativas.</p>
+          </Link>
+        )}
+        {user.permissoes.includes("usuarios.gerenciar") && (
+          <Link to="/perfis" className="card feature-card">
+            <ShieldCheck />
+            <h3>Perfis e permissões</h3>
+            <p>Revise as responsabilidades de cada perfil institucional.</p>
+          </Link>
+        )}
       </div>
+      <section className="card access-card">
+        <h2>Seu acesso</h2>
+        <div className="profile-tags">
+          {user.perfis.map((p) => (
+            <span className="profile-tag" key={p}>
+              {p}
+            </span>
+          ))}
+        </div>
+        <p>
+          A administração técnica não concede acesso automático ao conteúdo de
+          manifestações. Casos restritos exigem autorização individual e
+          ausência de conflitos de interesses.
+        </p>
+      </section>
     </>
   );
 }

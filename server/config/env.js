@@ -20,6 +20,7 @@ export function readConfig(env = process.env) {
     TRUST_PROXY: z.enum(["0", "1"]).default("0"),
     PG_SSL: z.enum(["true", "false"]).default("false"),
     PG_CA_FILE: z.string().optional(),
+    STORAGE_PATH: z.string().optional(),
   });
   const parsed = schema.safeParse(env);
   if (!parsed.success)

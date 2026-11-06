@@ -8,25 +8,54 @@ import {
   Menu,
   X,
   LockKeyhole,
+  ClipboardList,
+  Settings,
+  ChartColumn,
 } from "lucide-react";
 import { Brand } from "../components/Brand.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { Notifications } from "../components/Notifications.jsx";
 export function AppLayout() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 800px)').matches);
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia("(max-width: 800px)").matches,
+  );
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 800px)');
-    const change = () => { setMobile(media.matches); setOpen(false); };
-    const escape = event => { if (event.key === 'Escape') setOpen(false); };
-    media.addEventListener('change', change);
-    window.addEventListener('keydown', escape);
-    return () => { media.removeEventListener('change', change); window.removeEventListener('keydown', escape); };
+    const media = window.matchMedia("(max-width: 800px)");
+    const change = () => {
+      setMobile(media.matches);
+      setOpen(false);
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    media.addEventListener("change", change);
+    window.addEventListener("keydown", escape);
+    return () => {
+      media.removeEventListener("change", change);
+      window.removeEventListener("keydown", escape);
+    };
   }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const links = [
     { path: "/", label: "Visão geral", icon: LayoutDashboard },
+    ...(user.permissoes.includes("manifestacoes.acompanhar")
+      ? [
+          {
+            path: "/manifestacoes",
+            label: "Manifestações",
+            icon: ClipboardList,
+          },
+        ]
+      : []),
+    ...(user.permissoes.includes("indicadores.consultar")
+      ? [{ path: "/relatorios", label: "Relatórios", icon: ChartColumn }]
+      : []),
+    ...(user.permissoes.includes("cadastros.gerenciar")
+      ? [{ path: "/cadastros", label: "Cadastros", icon: Settings }]
+      : []),
     ...(user.permissoes.includes("usuarios.gerenciar")
       ? [{ path: "/perfis", label: "Perfis e permissões", icon: ShieldCheck }]
       : []),
@@ -53,7 +82,11 @@ export function AppLayout() {
           onClick={() => setOpen(false)}
         />
       )}
-      <aside id="main-navigation" className={`sidebar ${open ? "open" : ""}`} inert={mobile && !open}>
+      <aside
+        id="main-navigation"
+        className={`sidebar ${open ? "open" : ""}`}
+        inert={mobile && !open}
+      >
         <Brand light />
         <button
           className="mobile-close icon-button"
@@ -100,6 +133,7 @@ export function AppLayout() {
             <span>Sistema Integrado de Ouvidoria</span>
           </div>
           <div className="user-menu">
+            <Notifications />
             <div className="avatar">{user.nome.slice(0, 1).toUpperCase()}</div>
             <div className="user-info">
               <strong>{user.nome}</strong>
@@ -125,7 +159,7 @@ export function AppLayout() {
         </main>
         <footer className="app-footer">
           <span>Santa Casa de Pelotas · Ouvidoria</span>
-          <span>SIO / Fundação · v0.1</span>
+          <span>SIO · Uso institucional</span>
         </footer>
       </div>
     </div>
