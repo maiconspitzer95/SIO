@@ -54,14 +54,35 @@ export const today = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(
     new Date(),
   );
+const statusClass = {
+  Concluído: "done",
+  "Em andamento": "pending",
+  "Em validação": "validation",
+  "Em atraso": "late",
+  "Com gerente": "manager",
+  "Gerente em atraso": "critical",
+  Rascunho: "draft",
+};
 export function Status({ value }) {
   return (
-    <span
-      className={`status-badge ${value === "Concluído" ? "done" : value === "Em atraso" ? "late" : "pending"}`}
-    >
-      {value}
+    <span className={`status-badge ${statusClass[value] || "pending"}`}>
+      {value === "Em atraso"
+        ? "Em atraso · com gestor"
+        : value === "Com gerente"
+          ? "Com gerente · 24h"
+          : value}
     </span>
   );
+}
+/** Tempo restante (ou excedido) até uma data, em texto curto. */
+export function remaining(date) {
+  if (!date) return "—";
+  const diff = new Date(date) - Date.now();
+  const abs = Math.abs(diff);
+  const h = Math.floor(abs / 3600000),
+    m = Math.floor((abs % 3600000) / 60000);
+  const txt = h >= 48 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${m}min`;
+  return diff >= 0 ? `faltam ${txt}` : `atrasado há ${txt}`;
 }
 export function Pager({ page, total, onChange, size = 25 }) {
   return (

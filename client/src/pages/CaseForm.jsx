@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData.js";
 import { api } from "../services/api.js";
 import { Field, Select, Feedback, today } from "../components/Forms.jsx";
 import { PageTitle } from "../components/PageTitle.jsx";
+import { Paperclip, FileText } from "lucide-react";
 export function CaseForm() {
   const { id } = useParams(),
     navigate = useNavigate(),
@@ -25,9 +26,11 @@ export function CaseForm() {
       contato_telefone: "",
       contato_usuario_id: null,
       conflitos: [],
+      ocultar_contato: false,
       terceiro_confirmado: false,
     }),
     [error, setError] = useState(""),
+    [files, setFiles] = useState([]),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     if (existing.data) {
@@ -41,6 +44,7 @@ export function CaseForm() {
           ["contato_telefone", c?.telefone || ""],
           ["contato_usuario_id", c?.usuario_id || null],
           ["conflitos", conflitos || []],
+          ["ocultar_contato", !!m.ocultar_contato],
           ["versao", m.versao],
           ["justificativa", ""],
         ]),
@@ -48,13 +52,22 @@ export function CaseForm() {
     }
   }, [existing.data]);
   const change = (k, v) =>
-    setForm((f) => ({
-      ...f,
-      [k]: v,
-      ...(k === "area_id"
-        ? { motivo_id: "", setor_id: "", gestor_id: "" }
-        : {}),
-    }));
+    setForm((f) => {
+      const next = {
+        ...f,
+        [k]: v,
+        ...(k === "area_id"
+          ? { motivo_id: "", setor_id: "", gestor_id: "" }
+          : {}),
+      };
+      // Ao escolher o local, sugere o gestor quando há apenas um responsável.
+      if (k === "setor_id" && !id) {
+        const options = gestoresFor(lookups.data?.gestores, next);
+        if (!options.some((g) => g.id === next.gestor_id))
+          next.gestor_id = options.length === 1 ? options[0].id : "";
+      }
+      return next;
+    });
   async function submit(e) {
     e.preventDefault();
     const send = e.nativeEvent.submitter?.value === "send";
@@ -75,7 +88,21 @@ export function CaseForm() {
         method: id ? "PUT" : "POST",
         body: { ...form, encaminhar: send },
       });
-      navigate("/manifestacoes/" + (id || result.id));
+      const caseId = id || result.id;
+      // Envia os anexos um a um depois de salvar o registro.
+      const failed = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("arquivo", file);
+        try {
+          await api(`/cases/${caseId}/attachments`, { method: "POST", body: fd });
+        } catch (e) {
+          failed.push(`${file.name}: ${e.message}`);
+        }
+      }
+      navigate("/manifestacoes/" + caseId, {
+        state: failed.length ? { attachError: failed.join(" · ") } : undefined,
+      });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -91,8 +118,9 @@ export function CaseForm() {
         eyebrow="OUVIDORIA"
         title={id ? "Editar manifestação" : "Nova manifestação"}
       >
-        O número será gerado automaticamente. O prazo começa no encaminhamento
-        efetivo.
+        O número é gerado automaticamente. O prazo do gestor começa no
+        encaminhamento; se ele não responder, o caso fica em vermelho e vai ao
+        gerente, que tem 24h para responder.
       </PageTitle>
       <Feedback error={error || lookups.error || existing.error} />
       <form className="card form-card" onSubmit={submit}>
@@ -124,12 +152,8 @@ export function CaseForm() {
               "Local da ocorrência",
               l.setores?.filter((x) => x.area_id === form.area_id),
             ],
-            ["prazo_id", "Tempo de resposta", l.prazos],
-            [
-              "gestor_id",
-              "Gestor responsável",
-              l.gestores?.filter((x) => x.area_id === form.area_id),
-            ],
+            ["prazo_id", "Prazo para o gestor responder", l.prazos],
+            ["gestor_id", "Gestor responsável", gestoresFor(l.gestores, form)],
           ].map(([k, label, items]) => (
             <Field key={k} label={label}>
               <Select
@@ -176,40 +200,21 @@ export function CaseForm() {
               onChange={(e) => change("contato_telefone", e.target.value)}
             />
           </Field>
-          <Field
-            label="Contato é usuário do sistema?"
-            help="Vincule quando aplicável para prevenir conflitos de interesses."
-          >
-            <Select
-              empty="Não é usuário cadastrado"
-              items={l.pessoas}
-              value={form.contato_usuario_id || ""}
-              onChange={(e) =>
-                change("contato_usuario_id", e.target.value || null)
-              }
+          <label className="check-field hide-contact wide">
+            <input
+              type="checkbox"
+              checked={form.ocultar_contato}
+              onChange={(e) => change("ocultar_contato", e.target.checked)}
             />
-          </Field>
-          <Field
-            label="Usuários com conflito de interesses"
-            help="Selecione os envolvidos que não devem acessar este caso."
-          >
-            <select
-              multiple
-              value={form.conflitos}
-              onChange={(e) =>
-                change(
-                  "conflitos",
-                  [...e.target.selectedOptions].map((o) => o.value),
-                )
-              }
-            >
-              {l.pessoas?.map((p) => (
-                <option value={p.id} key={p.id}>
-                  {p.nome}
-                </option>
-              ))}
-            </select>
-          </Field>
+            <span>
+              <strong>Ocultar dados do contato</strong>
+              <small className="muted">
+                {form.ocultar_contato
+                  ? "Nome, e-mail e telefone ficam visíveis só para a Ouvidoria."
+                  : "O gestor responsável verá nome, e-mail e telefone do contato."}
+              </small>
+            </span>
+          </label>
         </div>
         <Field label="Descritivo da manifestação">
           <textarea
@@ -220,6 +225,49 @@ export function CaseForm() {
             onChange={(e) => change("relato", e.target.value)}
           />
         </Field>
+        <div className="field">
+          <label htmlFor="case-files">Anexar documentos</label>
+          <label className="file-drop" htmlFor="case-files">
+            <Paperclip size={20} />
+            <span>
+              <strong>Selecionar arquivos</strong>
+              <small>PDF, DOCX ou imagem (PNG, JPEG, WEBP) · até 10 MB cada</small>
+            </span>
+          </label>
+          <input
+            id="case-files"
+            className="visually-hidden"
+            type="file"
+            multiple
+            accept=".pdf,.docx,.png,.jpg,.jpeg,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp"
+            onChange={(e) => {
+              const picked = [...e.target.files];
+              const tooBig = picked.filter((f) => f.size > 10 * 1024 * 1024);
+              if (tooBig.length)
+                setError(`Arquivo acima de 10 MB: ${tooBig.map((f) => f.name).join(", ")}`);
+              setFiles((list) => [...list, ...picked.filter((f) => f.size <= 10 * 1024 * 1024)]);
+              e.target.value = "";
+            }}
+          />
+          {files.length > 0 && (
+            <ul className="file-list">
+              {files.map((f, i) => (
+                <li key={i}>
+                  <FileText size={16} />
+                  <span>{f.name}</span>
+                  <small>{Math.ceil(f.size / 1024)} KB</small>
+                  <button
+                    type="button"
+                    className="text-button danger"
+                    onClick={() => setFiles((list) => list.filter((_, j) => j !== i))}
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {id && (
           <Field label="Justificativa da edição">
             <textarea
@@ -236,8 +284,7 @@ export function CaseForm() {
             checked={form.terceiro_confirmado}
             onChange={(e) => change("terceiro_confirmado", e.target.checked)}
           />
-          Confirmo que este relato é de terceiro e que revisei os conflitos de
-          interesses.
+          Confirmo que este relato é de terceiro.
         </label>
         <div className="actions">
           <button className="primary" disabled={busy} value="draft">
@@ -261,4 +308,22 @@ export function CaseForm() {
       </form>
     </>
   );
+}
+
+/** Gestores do setor escolhido; sem setor, todos que atuam na área. */
+function gestoresFor(gestores = [], form) {
+  const inArea = gestores.filter(
+    (g) =>
+      g.area_id === form.area_id ||
+      (g.setores || []).some((s) => s.area_id === form.area_id),
+  );
+  if (!form.setor_id) return inArea;
+  const inSector = inArea.filter((g) =>
+    (g.setores || []).some((s) => s.id === form.setor_id),
+  );
+  const rest = inArea.filter((g) => !inSector.includes(g));
+  return [
+    ...inSector.map((g) => ({ ...g, nome: `${g.nome} · ${g.gerente_nome || "sem gerente"}` })),
+    ...rest,
+  ];
 }

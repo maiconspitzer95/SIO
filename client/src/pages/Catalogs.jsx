@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useData } from "../hooks/useData.js";
 import { api } from "../services/api.js";
 import { PageTitle } from "../components/PageTitle.jsx";
+import { morph } from "../services/glass.js";
 import { Field, Select, Feedback, Pager } from "../components/Forms.jsx";
 
 const definitions = {
@@ -27,16 +28,19 @@ const definitions = {
     label: "Gerentes",
     fields: {
       nome: "Nome",
+      email: "E-mail",
       setor_id: "Setor",
+      usuario_id: "Login de acesso (opcional)",
     },
   },
   gestores: {
     label: "Gestores",
     fields: {
       nome: "Nome",
-      area_id: "Área técnica",
-      setor_id: "Setor",
+      email: "E-mail",
       gerente_id: "Gerente responsável",
+      usuario_id: "Login de acesso (opcional)",
+      setores: "Setores vinculados",
     },
   },
   users: {
@@ -81,6 +85,22 @@ const relations = {
   gerente_id: "gerentes",
 };
 
+/** Monta somente os campos aceitos pelo cadastro (evita enviar colunas calculadas). */
+function payloadFrom(row, extra = {}) {
+  const tab = row.__tab;
+  const keys = Object.keys(definitions[tab].fields).filter((k) => k !== "senha");
+  const body = { ativo: row.ativo };
+  for (const k of keys) {
+    let v = row[k];
+    if (k === "setores") v = (v || []).map((x) => x.id ?? x);
+    if (k === "usuario_id") v = v || null;
+    if (k === "email" && v == null) v = "";
+    if (v !== undefined && v !== null) body[k] = v;
+    else if (k === "usuario_id") body[k] = null;
+  }
+  return { ...body, ...extra };
+}
+
 export function Catalogs() {
   const [tab, setTab] = useState("areas_tecnicas"),
     [editing, setEditing] = useState(null),
@@ -114,6 +134,9 @@ export function Catalogs() {
                 : key === "perfis"
                   ? []
                   : ""));
+    if (tab === "gestores")
+      d.setores = (row?.setores || []).map((x) => x.id ?? x);
+    if ("usuario_id" in d) d.usuario_id = row?.usuario_id || "";
     if (tab === "prazos" && !row)
       Object.assign(d, {
         tipo: "Geral",
@@ -129,13 +152,6 @@ export function Catalogs() {
   function change(key, value) {
     setForm((f) => {
       const next = { ...f, [key]: value };
-      if (tab === "gestores" && key === "area_id") {
-        const sectorBelongs = (lookups.data?.setores || []).some(
-          (s) => s.id === next.setor_id && s.area_id === value,
-        );
-        if (!sectorBelongs) next.setor_id = "";
-        next.gerente_id = "";
-      }
       return next;
     });
   }
@@ -148,7 +164,7 @@ export function Catalogs() {
     try {
       await api(`/catalogs/${tab}/${row.id}`, {
         method: "PUT",
-        body: { ...row, ativo: !row.ativo },
+        body: payloadFrom(row, { ativo: !row.ativo }),
       });
       setSuccess(`Cadastro ${row.ativo ? "inativado" : "ativado"} com sucesso.`);
       records.reload();
@@ -182,19 +198,15 @@ export function Catalogs() {
           return;
         }
       }
+      if ("usuario_id" in body && !body.usuario_id) body.usuario_id = null;
       if (tab === "gerentes" && !body.setor_id) {
         setError("Selecione o setor do gerente.");
         setBusy(false);
         return;
       }
       if (tab === "gestores") {
-        if (!body.area_id) {
-          setError("Selecione a área técnica.");
-          setBusy(false);
-          return;
-        }
-        if (!body.setor_id) {
-          setError("Selecione o setor.");
+        if (!body.setores?.length) {
+          setError("Selecione pelo menos um setor para o gestor.");
           setBusy(false);
           return;
         }
@@ -225,6 +237,7 @@ export function Catalogs() {
   }
 
   const all = (records.data?.items || [])
+    .map((r) => ({ ...r, __tab: tab }))
     .filter((r) => {
       const matchText = (
         (r.nome || "") +
@@ -235,14 +248,21 @@ export function Catalogs() {
         " " +
         (r.setor_nome || "") +
         " " +
-        (r.gerente_nome || "")
+        (r.gerente_nome || "") +
+        " " +
+        (r.email || "") +
+        " " +
+        (r.setores || []).map((x) => x.nome).join(" ")
       )
         .toLowerCase()
         .includes(search.toLowerCase());
       if (!matchText) return false;
       if (tab === "gestores") {
-        if (filterArea && r.area_id !== filterArea) return false;
-        if (filterSetor && r.setor_id !== filterSetor) return false;
+        const sectors = r.setores || [];
+        if (filterArea && !sectors.some((x) => x.area_id === filterArea))
+          return false;
+        if (filterSetor && !sectors.some((x) => x.id === filterSetor))
+          return false;
       }
       if (filterStatus === "ativo" && !r.ativo) return false;
       if (filterStatus === "inativo" && r.ativo) return false;
@@ -262,7 +282,8 @@ export function Catalogs() {
           <button
             key={key}
             className={key === tab ? "active" : ""}
-            onClick={() => {
+            onClick={() =>
+              morph(() => {
               setTab(key);
               setForm(null);
               setPage(1);
@@ -272,7 +293,8 @@ export function Catalogs() {
               setFilterStatus("todos");
               setError("");
               setSuccess("");
-            }}
+              })
+            }
           >
             {d.label}
           </button>
@@ -344,6 +366,39 @@ export function Catalogs() {
                       </small>
                     </Field>
                   );
+                if (key === "setores")
+                  return (
+                    <div className="field wide" key={key}>
+                      <label>
+                        {label} · {form.setores.length} selecionado(s)
+                      </label>
+                      <SectorPicker
+                        areas={lookups.data?.areas_tecnicas || []}
+                        sectors={lookups.data?.setores || []}
+                        value={form.setores}
+                        onChange={(v) => change("setores", v)}
+                      />
+                      <small className="muted">
+                        Um gestor pode responder por vários setores. O primeiro
+                        selecionado é o setor principal.
+                      </small>
+                    </div>
+                  );
+                if (key === "usuario_id")
+                  return (
+                    <Field
+                      key={key}
+                      label={label}
+                      help={`O usuário precisa ter o perfil ${tab === "gestores" ? "GESTOR" : "GERENTE"} para acessar e responder.`}
+                    >
+                      <Select
+                        empty="Sem login vinculado"
+                        items={lookups.data?.pessoas || []}
+                        value={form.usuario_id}
+                        onChange={(e) => change(key, e.target.value)}
+                      />
+                    </Field>
+                  );
                 if (relations[key]) {
                   let items = lookups.data?.[relations[key]] || [];
                   if (key === "setor_id") {
@@ -352,20 +407,6 @@ export function Catalogs() {
                     }
                   } else if (key === "gerente_id") {
                     items = items.filter((r) => r.ativo);
-                    if (form.setor_id) {
-                      const inSector = items.filter(
-                        (r) => r.setor_id === form.setor_id,
-                      );
-                      if (inSector.length > 0) items = inSector;
-                      else if (form.area_id)
-                        items = items.filter(
-                          (r) => !r.area_id || r.area_id === form.area_id,
-                        );
-                    } else if (form.area_id) {
-                      items = items.filter(
-                        (r) => !r.area_id || r.area_id === form.area_id,
-                      );
-                    }
                   } else if (key === "area_id") {
                     items = items.filter((r) => r.ativo);
                   }
@@ -408,7 +449,11 @@ export function Catalogs() {
                 return (
                   <Field key={key} label={label}>
                     <input
-                      required={!["senha"].includes(key) || !editing}
+                      required={
+                        key === "senha"
+                          ? !editing
+                          : !(key === "email" && tab !== "users")
+                      }
                       type={
                         key === "senha"
                           ? "password"
@@ -420,7 +465,11 @@ export function Catalogs() {
                       }
                       maxLength={key === "senha" ? 6 : undefined}
                       placeholder={
-                        key === "senha" ? "Máximo de 6 caracteres" : undefined
+                        key === "senha"
+                          ? "Máximo de 6 caracteres"
+                          : key === "email"
+                            ? "nome@santacasadepelotas.com.br"
+                            : undefined
                       }
                       value={form[key]}
                       onChange={(e) => change(key, e.target.value)}
@@ -523,6 +572,7 @@ export function Catalogs() {
                 <thead>
                   <tr>
                     <th>Nome</th>
+                    <th>E-mail</th>
                     <th>Setor</th>
                     <th>Situação</th>
                     <th>Ações</th>
@@ -533,7 +583,11 @@ export function Catalogs() {
                     <tr key={row.id}>
                       <td>
                         <strong>{row.nome}</strong>
+                        {row.usuario_id && (
+                          <small className="cell-sub">Com login de acesso</small>
+                        )}
                       </td>
+                      <td>{row.email || "—"}</td>
                       <td>
                         {row.setor_nome ||
                           lookups.data?.setores?.find(
@@ -573,8 +627,8 @@ export function Catalogs() {
                 <thead>
                   <tr>
                     <th>Gestor</th>
-                    <th>Área técnica</th>
-                    <th>Setor</th>
+                    <th>E-mail</th>
+                    <th>Setores</th>
                     <th>Gerente responsável</th>
                     <th>Situação</th>
                     <th>Ações</th>
@@ -585,20 +639,18 @@ export function Catalogs() {
                     <tr key={row.id}>
                       <td>
                         <strong>{row.nome}</strong>
+                        {row.usuario_id && (
+                          <small className="cell-sub">Com login de acesso</small>
+                        )}
                       </td>
+                      <td>{row.email || "—"}</td>
                       <td>
-                        {row.area_nome ||
-                          lookups.data?.areas_tecnicas?.find(
-                            (a) => a.id === row.area_id,
-                          )?.nome ||
-                          "—"}
-                      </td>
-                      <td>
-                        {row.setor_nome ||
-                          lookups.data?.setores?.find(
-                            (s) => s.id === row.setor_id,
-                          )?.nome ||
-                          "—"}
+                        <div className="chip-list">
+                          {(row.setores || []).map((x) => (
+                            <span key={x.id}>{x.nome}</span>
+                          ))}
+                          {!row.setores?.length && "—"}
+                        </div>
                       </td>
                       <td>
                         {row.gerente_nome ||
@@ -735,5 +787,36 @@ function Settings() {
       </button>
       <p role="status">{message}</p>
     </section>
+  );
+}
+
+function SectorPicker({ areas, sectors, value, onChange }) {
+  const toggle = (id) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const active = sectors.filter((s) => s.ativo !== false);
+  const groups = areas
+    .map((a) => ({ area: a, items: active.filter((s) => s.area_id === a.id) }))
+    .filter((g) => g.items.length);
+  if (!groups.length)
+    return <p className="muted small">Cadastre setores antes de vincular gestores.</p>;
+  return (
+    <div className="chip-picker" role="group" aria-label="Setores vinculados">
+      {groups.map((g) => (
+        <div key={g.area.id} style={{ display: "contents" }}>
+          <span className="chip-group">{g.area.nome}</span>
+          {g.items.map((s) => (
+            <button
+              type="button"
+              key={s.id}
+              className={`chip ${value.includes(s.id) ? "selected" : ""}`}
+              aria-pressed={value.includes(s.id)}
+              onClick={() => toggle(s.id)}
+            >
+              {s.nome}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }

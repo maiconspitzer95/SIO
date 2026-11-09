@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../services/api.js";
 import { useData } from "../hooks/useData.js";
@@ -12,7 +12,10 @@ import {
   formatDate,
   day,
   today,
+  remaining,
 } from "../components/Forms.jsx";
+import { AlertTriangle } from "lucide-react";
+import { morph } from "../services/glass.js";
 const stages = {
   rascunho: "Rascunho",
   encaminhada: "Aguardando gestor",
@@ -23,18 +26,21 @@ const stages = {
 };
 const actionNames = {
   providenciar: "Registrar providência gerencial",
+  responder_gerente: "Responder como gerente",
+  escalar: "Encaminhar ao gerente (24h)",
   encaminhar: "Encaminhar",
   trocar: "Trocar gestor",
-  responder: "Enviar resposta",
-  complementar: "Solicitar complementação",
+  responder: "Responder",
+  complementar: "Pedir nova justificativa ao gestor",
   aprovar: "Aprovar resposta",
-  concluir: "Registrar resposta final e concluir",
+  concluir: "Finalizar manifestação",
   discutir: "Registrar discussão",
   autorizar: "Autorizar acesso",
   revogar: "Revogar acesso",
 };
 export function CaseDetail() {
   const { user } = useAuth();
+  const attachError = useLocation().state?.attachError;
   const { id } = useParams(),
     details = useData("/cases/" + id),
     lookups = useData("/catalogs/lookups");
@@ -108,19 +114,18 @@ export function CaseDetail() {
   if (d.actions.operar) {
     if (m.etapa === "rascunho") actions.push("encaminhar");
     else if (m.etapa !== "concluida") actions.push("trocar");
-    if (m.etapa === "validacao") actions.push("aprovar", "complementar");
-    if (m.etapa === "aprovada") actions.push("complementar", "concluir");
-    if (m.etapa !== "concluida") actions.push("autorizar");
-    actions.push("revogar");
+    // Resposta recebida: a Ouvidoria finaliza ou pede nova justificativa.
+    if (["validacao", "aprovada"].includes(m.etapa))
+      actions.unshift("concluir", "complementar");
   }
   if (
     d.actions.responder &&
     ["encaminhada", "complementacao"].includes(m.etapa)
   )
     actions.push("responder");
+  if (d.actions.responder_gerente) actions.unshift("responder_gerente");
+  if (d.actions.escalar) actions.unshift("escalar");
   if (d.actions.discutir) actions.push("discutir");
-  if (d.actions.providenciar && m.etapa !== "concluida")
-    actions.push("providenciar");
   const permissionMap = {
     encaminhar: "manifestacoes.encaminhar",
     trocar: "manifestacoes.encaminhar",
@@ -141,7 +146,56 @@ export function CaseDetail() {
         </PageTitle>
         <Status value={m.status} />
       </div>
-      <Feedback error={error || details.error} success={success} />
+      <Feedback
+        error={
+          error ||
+          details.error ||
+          (attachError && `Alguns anexos não foram enviados: ${attachError}`)
+        }
+        success={success}
+      />
+      {m.status === "Em atraso" && (
+        <div className="escalation-banner">
+          <AlertTriangle size={28} />
+          <div>
+            <strong>
+              Gestor {m.gestor_nome} não respondeu no prazo
+            </strong>
+            <p>
+              O prazo venceu em {formatDate(m.vencimento)} ({remaining(m.vencimento)}).
+              {d.actions.escalar
+                ? ` Você pode encaminhar ao gerente responsável, ${m.gerente_nome}, que terá 24h para responder.`
+                : ` Gerente responsável: ${m.gerente_nome}.`}
+            </p>
+          </div>
+          {d.actions.escalar && (
+            <button className="secondary banner-action" onClick={() => begin("escalar")}>
+              Encaminhar ao gerente
+            </button>
+          )}
+        </div>
+      )}
+      {["Com gerente", "Gerente em atraso"].includes(m.status) && (
+        <div className={`escalation-banner ${m.status === "Com gerente" ? "warn" : ""}`}>
+          <AlertTriangle size={28} />
+          <div>
+            <strong>
+              {m.status === "Gerente em atraso"
+                ? `Gerente ${m.gerente_nome} não respondeu em 24h`
+                : `Encaminhada ao gerente ${m.gerente_nome} por atraso do gestor ${m.gestor_nome}`}
+            </strong>
+            <p>
+              Encaminhada em {formatDate(m.escalado_gerente_em)}. Prazo do
+              gerente: {formatDate(m.prazo_gerente)} ({remaining(m.prazo_gerente)}).
+            </p>
+          </div>
+        </div>
+      )}
+      {m.status === "Em andamento" && m.vencimento && (
+        <div className="message info">
+          Prazo do gestor: {formatDate(m.vencimento)} · {remaining(m.vencimento)}
+        </div>
+      )}
       <section className="card case-summary">
         <div>
           <small>Etapa</small>
@@ -149,7 +203,7 @@ export function CaseDetail() {
         </div>
         <div>
           <small>Prazo</small>
-          <strong>{m.prazo_tipo}</strong>
+          <strong>{m.prazo_nome || m.prazo_tipo}</strong>
         </div>
         <div>
           <small>Vencimento</small>
@@ -158,6 +212,10 @@ export function CaseDetail() {
         <div>
           <small>Gestor</small>
           <strong>{m.gestor_nome}</strong>
+        </div>
+        <div>
+          <small>Gerente</small>
+          <strong>{m.gerente_nome}</strong>
         </div>
         <div>
           <small>Classificação</small>
@@ -170,12 +228,14 @@ export function CaseDetail() {
           "Encaminhamentos e respostas",
           "Histórico",
           "Anexos",
-          "Discussão com a Direção",
+          ...(user.perfis.some((p) => ["OUVIDORIA", "DIRECAO"].includes(p))
+            ? ["Discussão com a Direção"]
+            : []),
         ].map((t) => (
           <button
             key={t}
             className={tab === t ? "active" : ""}
-            onClick={() => setTab(t)}
+            onClick={() => morph(() => setTab(t))}
           >
             {t}
           </button>
@@ -211,15 +271,33 @@ export function CaseDetail() {
                 <dt>Resposta do gestor</dt>
                 <dd>{formatDate(m.resposta_gestor_em)}</dd>
               </div>
+              {m.escalado_gerente_em && (
+                <>
               <div>
-                <dt>Alerta ao gerente</dt>
-                <dd>{formatDate(m.alerta_gerente_em)}</dd>
+                <dt>Encaminhada ao gerente</dt>
+                <dd>{formatDate(m.escalado_gerente_em)}</dd>
               </div>
+              <div>
+                <dt>Prazo do gerente (24h)</dt>
+                <dd>{formatDate(m.prazo_gerente)}</dd>
+              </div>
+              <div>
+                <dt>Resposta do gerente</dt>
+                <dd>{formatDate(m.resposta_gerente_em)}</dd>
+              </div>
+                </>
+              )}
               <div>
                 <dt>Resposta da Ouvidoria</dt>
                 <dd>{formatDate(m.respondido_em)}</dd>
               </div>
             </dl>
+            {!d.contato && (
+              <div className="contact-box muted">
+                <h3>Contato</h3>
+                <p>Dados do contato ocultos pela Ouvidoria.</p>
+              </div>
+            )}
             {d.contato && (
               <div className="contact-box">
                 <h3>Contato</h3>
@@ -277,8 +355,11 @@ export function CaseDetail() {
             ))}
             <h3>Respostas preservadas</h3>
             {d.respostas.map((x) => (
-              <article className="timeline-item" key={x.id}>
-                <strong>{formatDate(x.criado_em)}</strong>
+              <article className={`timeline-item ${x.origem === "gerente" ? "gerente" : ""}`} key={x.id}>
+                <strong>
+                  {formatDate(x.criado_em)} ·{" "}
+                  {x.origem === "gerente" ? "Resposta do gerente" : "Resposta do gestor"}
+                </strong>
                 <h4>Análise</h4>
                 <p className="preserve-text">{x.analise}</p>
                 <h4>Justificativa e providências</h4>
@@ -319,7 +400,7 @@ export function CaseDetail() {
         {tab === "Anexos" && (
           <>
             <p>
-              Documentos privados. Formatos permitidos: PDF, PNG e JPEG, até 10
+              Documentos privados. Formatos permitidos: PDF, DOCX e imagens (PNG, JPEG, WEBP), até 10
               MB.
             </p>
             {d.anexos.map((a) => (
@@ -340,6 +421,7 @@ export function CaseDetail() {
             )}
             {m.etapa !== "concluida" &&
               (d.actions.operar ||
+                d.actions.responder_gerente ||
                 (d.actions.responder &&
                   ["encaminhada", "complementacao"].includes(m.etapa))) && (
                 <form onSubmit={attach} className="actions">
@@ -348,7 +430,7 @@ export function CaseDetail() {
                     type="file"
                     name="arquivo"
                     required
-                    accept=".pdf,.png,.jpg,.jpeg"
+                    accept=".pdf,.docx,.png,.jpg,.jpeg,.webp"
                   />
                   <button className="primary" disabled={busy}>
                     Anexar documento
@@ -377,7 +459,7 @@ export function CaseDetail() {
         {allowed.map((a) => (
           <button
             key={a}
-            className={a === "concluir" ? "primary" : "secondary"}
+            className={["concluir", "responder_gerente", "responder", "escalar"].includes(a) ? "primary" : "secondary"}
             onClick={() => begin(a)}
           >
             {actionNames[a]}
@@ -390,13 +472,22 @@ export function CaseDetail() {
       {action && (
         <form className="card form-card" onSubmit={submit}>
           <h2>{actionNames[action]}</h2>
+          {action === "escalar" && (
+            <p className="message info">
+              O gerente {m.gerente_nome} será notificado e terá 24h para
+              responder à Ouvidoria. A observação abaixo é opcional.
+            </p>
+          )}
           <div className="form-grid">
             {action === "trocar" && (
               <Field label="Novo gestor">
                 <Select
                   required
                   items={lookups.data?.gestores.filter(
-                    (g) => g.area_id === m.area_id && g.id !== m.gestor_id,
+                    (g) =>
+                      g.id !== m.gestor_id &&
+                      (g.area_id === m.area_id ||
+                        (g.setores || []).some((s) => s.area_id === m.area_id)),
                   )}
                   value={form.gestor_id}
                   onChange={(e) => change("gestor_id", e.target.value)}
@@ -432,31 +523,12 @@ export function CaseDetail() {
               </>
             )}
           </div>
-          {action === "responder" && (
-            <>
-              <Field label="Análise">
-                <textarea
-                  required
-                  rows={4}
-                  value={form.analise}
-                  onChange={(e) => change("analise", e.target.value)}
-                />
-              </Field>
-              <Field label="Providências adotadas">
-                <textarea
-                  rows={3}
-                  value={form.providencias}
-                  onChange={(e) => change("providencias", e.target.value)}
-                />
-              </Field>
-            </>
-          )}
-          {["responder", "concluir", "providenciar"].includes(action) && (
+          {["responder", "responder_gerente", "concluir", "providenciar"].includes(action) && (
             <Field
               label={
                 action === "concluir"
                   ? "Resposta institucional final"
-                  : "Resposta do gestor"
+                  : "Resposta"
               }
             >
               <textarea
@@ -468,15 +540,14 @@ export function CaseDetail() {
             </Field>
           )}
           {action === "concluir" && (
-            <Field label="Como a resposta foi disponibilizada ao manifestante?">
+            <Field label="Como o retorno foi dado ao manifestante? (opcional)">
               <textarea
-                required
                 value={form.procedimento}
                 onChange={(e) => change("procedimento", e.target.value)}
               />
             </Field>
           )}
-          {!["concluir", "aprovar"].includes(action) && (
+          {!["concluir", "aprovar", "responder", "responder_gerente"].includes(action) && (
             <Field
               label={
                 action === "discutir"
@@ -485,7 +556,7 @@ export function CaseDetail() {
               }
             >
               <textarea
-                required={!["responder", "encaminhar"].includes(action)}
+                required={!["responder", "responder_gerente", "encaminhar", "escalar"].includes(action)}
                 rows={3}
                 value={form.justificativa}
                 onChange={(e) => change("justificativa", e.target.value)}
@@ -494,7 +565,13 @@ export function CaseDetail() {
           )}
           <div className="actions">
             <button className="primary" disabled={busy}>
-              {busy ? "Registrando…" : "Confirmar ação"}
+              {busy
+                ? "Registrando…"
+                : ["responder", "responder_gerente"].includes(action)
+                  ? "Enviar resposta"
+                  : action === "concluir"
+                    ? "Finalizar"
+                    : "Confirmar ação"}
             </button>
             <button
               className="secondary"

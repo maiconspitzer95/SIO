@@ -11,6 +11,8 @@ import { transaction } from "../config/database.js";
 import { audit } from "../services/audit.js";
 import { hashPassword } from "../services/passwords.js";
 
+const SETORES = `COALESCE((SELECT jsonb_agg(jsonb_build_object('id',s2.id,'nome',s2.nome,'area_id',s2.area_id) ORDER BY s2.nome) FROM gestor_setores gs JOIN setores s2 ON s2.id=gs.setor_id WHERE gs.gestor_id=g.id),'[]') AS setores`;
+
 export function catalogRoutes(pool) {
   const r = Router();
   r.get("/lookups", async (req, res) => {
@@ -18,9 +20,9 @@ export function catalogRoutes(pool) {
     for (const table of Object.keys(catalogSchemas)) {
       let q = `SELECT * FROM ${table} WHERE ativo ORDER BY nome`;
       if (table === "gerentes") {
-        q = `SELECT ge.*, s.nome AS setor_nome FROM gerentes ge LEFT JOIN setores s ON s.id=ge.setor_id WHERE ge.ativo ORDER BY ge.nome`;
+        q = `SELECT ge.id, ge.nome, ge.usuario_id, ge.area_id, ge.setor_id, ge.ativo, s.nome AS setor_nome FROM gerentes ge LEFT JOIN setores s ON s.id=ge.setor_id WHERE ge.ativo ORDER BY ge.nome`;
       } else if (table === "gestores") {
-        q = `SELECT g.*, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.ativo ORDER BY g.nome`;
+        q = `SELECT g.id, g.nome, g.usuario_id, g.area_id, g.setor_id, g.gerente_id, g.ativo, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome, ${SETORES} FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.ativo ORDER BY g.nome`;
       }
       result[table] = (await pool.query(q)).rows;
     }
@@ -144,7 +146,7 @@ export function catalogRoutes(pool) {
       if (table === "gerentes") {
         q = `SELECT ge.*, s.nome AS setor_nome FROM gerentes ge LEFT JOIN setores s ON s.id=ge.setor_id ORDER BY ge.nome`;
       } else if (table === "gestores") {
-        q = `SELECT g.*, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id ORDER BY g.nome`;
+        q = `SELECT g.*, a.nome AS area_nome, s.nome AS setor_nome, ge.nome AS gerente_nome, ${SETORES} FROM gestores g LEFT JOIN areas_tecnicas a ON a.id=g.area_id LEFT JOIN setores s ON s.id=g.setor_id LEFT JOIN gerentes ge ON ge.id=g.gerente_id ORDER BY g.nome`;
       }
       res.json({
         items: (await pool.query(q)).rows,
@@ -215,6 +217,7 @@ export function catalogRoutes(pool) {
         }
       }
 
+      let gestorSetores = null;
       if (table === "gestores") {
         if (d.usuario_id) {
           const userCheck = await db.query(
@@ -224,25 +227,34 @@ export function catalogRoutes(pool) {
           if (!userCheck.rowCount)
             throw new HttpError(400, "Usuário vinculado deve estar ativo e possuir perfil GESTOR.");
         }
-        if (
-          !(
-            await db.query(
-              "SELECT id FROM setores WHERE id=$1 AND area_id=$2 AND ativo",
-              [d.setor_id, d.area_id],
-            )
-          ).rowCount
-        )
-          throw new HttpError(400, "Setor deve pertencer à área selecionada e estar ativo.");
-        const gerente = (
+        // Vários setores por gestor; o primeiro passa a ser o setor principal.
+        gestorSetores = [
+          ...new Set(d.setores?.length ? d.setores : d.setor_id ? [d.setor_id] : []),
+        ];
+        delete d.setores;
+        if (!gestorSetores.length)
+          throw new HttpError(400, "Selecione pelo menos um setor para o gestor.");
+        const sectors = (
           await db.query(
-            "SELECT id, area_id, setor_id FROM gerentes WHERE id=$1 AND ativo",
-            [d.gerente_id],
+            "SELECT id, area_id FROM setores WHERE id=ANY($1::uuid[]) AND ativo",
+            [gestorSetores],
           )
+        ).rows;
+        if (sectors.length !== gestorSetores.length)
+          throw new HttpError(400, "Todos os setores devem existir e estar ativos.");
+        const principal =
+          d.setor_id && gestorSetores.includes(d.setor_id)
+            ? d.setor_id
+            : gestorSetores[0];
+        d.setor_id = principal;
+        d.area_id = sectors.find((x) => x.id === principal).area_id;
+        const gerente = (
+          await db.query("SELECT id FROM gerentes WHERE id=$1 AND ativo", [
+            d.gerente_id,
+          ])
         ).rows[0];
         if (!gerente)
           throw new HttpError(400, "Gerente responsável deve estar cadastrado e ativo.");
-        if (gerente.area_id && gerente.area_id !== d.area_id)
-          throw new HttpError(400, "Gerente responsável deve pertencer à mesma área técnica.");
       }
 
       const keys = Object.keys(d),
@@ -254,6 +266,14 @@ export function catalogRoutes(pool) {
         : `INSERT INTO ${table}(${keys.join(",")}) VALUES(${keys.map((_, i) => `$${i + 1}`).join(",")}) RETURNING *`;
       const row = (await db.query(sql, id ? [...values, id] : values)).rows[0];
       if (!row) throw new HttpError(404, "Registro não encontrado.");
+      if (gestorSetores) {
+        await db.query("DELETE FROM gestor_setores WHERE gestor_id=$1", [row.id]);
+        await db.query(
+          "INSERT INTO gestor_setores(gestor_id,setor_id) SELECT $1, unnest($2::uuid[])",
+          [row.id, gestorSetores],
+        );
+        row.setores = gestorSetores;
+      }
       await audit(db, {
         actor: req.user.id,
         event: `cadastro.${id ? "alterado" : "criado"}`,

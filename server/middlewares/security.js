@@ -25,8 +25,11 @@ export function csrf(config) {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
     const supplied = req.get("x-csrf-token") || "";
     const expected = req.session.csrf || "";
+    const allowed = config.allowedOrigins || [
+      new URL(config.APP_ORIGIN).origin,
+    ];
     if (
-      req.get("origin") !== new URL(config.APP_ORIGIN).origin ||
+      !allowed.includes(req.get("origin")) ||
       !expected ||
       Buffer.byteLength(supplied) !== Buffer.byteLength(expected) ||
       !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))

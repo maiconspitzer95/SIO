@@ -33,7 +33,7 @@ export function attachmentRoutes(pool, config) {
           e
             ? new HttpError(
                 400,
-                "Envie um único arquivo PDF, PNG ou JPEG de até 10 MB.",
+                "Envie um único arquivo PDF, DOCX ou imagem (PNG, JPEG, WEBP) de até 10 MB.",
               )
             : undefined,
         ),
@@ -43,11 +43,17 @@ export function attachmentRoutes(pool, config) {
       const type = await fileTypeFromBuffer(req.file.buffer);
       if (
         !type ||
-        !["application/pdf", "image/png", "image/jpeg"].includes(type.mime)
+        ![
+          "application/pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "image/png",
+          "image/jpeg",
+          "image/webp",
+        ].includes(type.mime)
       )
         throw new HttpError(
           400,
-          "Formato real do arquivo não permitido. Use PDF, PNG ou JPEG.",
+          "Formato real do arquivo não permitido. Use PDF, DOCX ou imagem (PNG, JPEG, WEBP).",
         );
       const key = randomUUID() + "." + type.ext,
         path = resolve(storage, key);
@@ -58,16 +64,24 @@ export function attachmentRoutes(pool, config) {
           if (m.etapa === "concluida")
             throw new HttpError(409, "Manifestação concluída.");
           const manager = (
-            await db.query("SELECT usuario_id FROM gestores WHERE id=$1", [
-              m.gestor_id,
-            ])
+            await db.query(
+              "SELECT g.usuario_id, ge.usuario_id AS gerente_usuario FROM gestores g JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.id=$1",
+              [m.gestor_id],
+            )
           ).rows[0];
+          const waiting = ["encaminhada", "complementacao"].includes(m.etapa);
           if (
             !req.user.perfis.includes("OUVIDORIA") &&
             !(
               req.user.perfis.includes("GESTOR") &&
               manager?.usuario_id === req.user.id &&
-              ["encaminhada", "complementacao"].includes(m.etapa)
+              waiting
+            ) &&
+            !(
+              req.user.perfis.includes("GERENTE") &&
+              manager?.gerente_usuario === req.user.id &&
+              m.escalado_gerente_em &&
+              waiting
             )
           )
             throw new HttpError(403, "Sem permissão para anexar neste caso.");

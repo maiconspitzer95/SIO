@@ -1,9 +1,15 @@
 import { useState } from "react";
-import { ArrowRight, ShieldCheck, Eye, EyeOff, ArrowLeft } from "lucide-react";
-import { Brand } from "../components/Brand.jsx";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  User,
+  KeyRound,
+} from "lucide-react";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../services/api.js";
-import logoUrl from "../assets/santacasalogo.png";
 
 export function Login() {
   const auth = useAuth();
@@ -39,79 +45,75 @@ export function Login() {
     }
   }
   function switchMode() {
-    setRecovery(!recovery);
-    setError("");
-    setSuccess("");
+    const run = () => {
+      setRecovery(!recovery);
+      setError("");
+      setSuccess("");
+    };
+    // "Morphing" do cartão de vidro entre login e recuperação.
+    if (document.startViewTransition) document.startViewTransition(run);
+    else run();
   }
   return (
     <main className="login-page">
-      <section className="login-story">
-        <Brand light />
-        <div className="story-copy">
-          <span className="eyebrow">OUVIDORIA INSTITUCIONAL</span>
-          <h1>
-            Escutar com atenção.
-            <br />
-            Cuidar com propósito.
-          </h1>
-          <p>
-            Um espaço integrado para acolher manifestações e acompanhar cada
-            resposta com responsabilidade.
-          </p>
-          <div className="story-rule" />
-          <span>Santa Casa de Pelotas</span>
-        </div>
-        <div className="story-footer">
-          <ShieldCheck size={18} /> Acesso exclusivo a profissionais autorizados
-        </div>
-      </section>
-      <section className="login-panel">
-        <div className="login-box">
-          <div className="login-institution-header">
-            <img
-              src={logoUrl}
-              alt="Santa Casa de Pelotas"
-              className="login-institution-logo"
-            />
-            <div className="system-tag">
-              SIO <span>/</span> OUVIDORIA
-            </div>
+      <div className="login-stack">
+        <header className="login-hero">
+          {/* O logotipo já faz parte da imagem de fundo; mantido para leitores de tela */}
+          <span className="visually-hidden">Santa Casa de Pelotas</span>
+          <span className="system-tag">
+            SIO <span>·</span> SISTEMA INTEGRADO DE OUVIDORIA
+          </span>
+          <h1>Escutar com atenção. Cuidar com propósito.</h1>
+        </header>
+
+        <section className="login-glass glass-interactive" aria-labelledby="login-title">
+          <div className="login-glass-head">
+            <h2 id="login-title">
+              {recovery ? "Recuperar acesso" : "Entrar"}
+            </h2>
+            <p>
+              {recovery
+                ? "Use o código de uso único fornecido pela administração. Ele expira em 15 minutos."
+                : "Use suas credenciais institucionais."}
+            </p>
           </div>
-          <h2>{recovery ? "Recuperar acesso" : "Bem-vindo ao SIO"}</h2>
-          <p className="muted">
-            {recovery
-              ? "Solicite à administração um código de uso único, após a verificação da sua identidade. O código expira em 15 minutos."
-              : "Sistema Integrado de Ouvidoria. Entre com suas credenciais institucionais."}
-          </p>
           <form key={String(recovery)} onSubmit={submit}>
             {recovery ? (
-              <label>
-                Código de recuperação
-                <input
-                  name="token"
-                  autoComplete="off"
-                  minLength={64}
-                  maxLength={64}
-                  required
-                  placeholder="Cole o código fornecido pela administração"
-                />
+              <label className="glass-field">
+                <span>Código de recuperação</span>
+                <div className="glass-input">
+                  <KeyRound size={18} aria-hidden="true" />
+                  <input
+                    name="token"
+                    autoComplete="off"
+                    minLength={64}
+                    maxLength={64}
+                    required
+                    placeholder="Cole o código recebido"
+                  />
+                </div>
               </label>
             ) : (
-              <label>
-                Usuário
-                <input
-                  name="login"
-                  autoComplete="username"
-                  required
-                  minLength={3}
-                  maxLength={80}
-                  placeholder="Seu usuário institucional"
-                />
+              <label className="glass-field">
+                <span>Usuário</span>
+                <div className="glass-input">
+                  <User size={18} aria-hidden="true" />
+                  <input
+                    name="login"
+                    autoComplete="username"
+                    required
+                    minLength={3}
+                    maxLength={80}
+                    placeholder="Seu usuário"
+                    autoFocus
+                  />
+                </div>
               </label>
             )}
-            <label>
-              {recovery ? "Nova senha (máx. 6 caracteres)" : "Senha"}
-              <div className="password-field">
+            <label className="glass-field">
+              <span>{recovery ? "Nova senha (máx. 6 caracteres)" : "Senha"}</span>
+              <div className="glass-input">
+                <KeyRound size={18} aria-hidden="true" />
                 <input
                   name="senha"
                   type={visible ? "text" : "password"}
@@ -119,13 +121,11 @@ export function Login() {
                   minLength={1}
                   maxLength={recovery ? 6 : 128}
                   required
-                  placeholder={
-                    recovery ? "No máximo 6 caracteres" : "Digite sua senha"
-                  }
+                  placeholder={recovery ? "Até 6 caracteres" : "Sua senha"}
                 />
                 <button
                   type="button"
-                  className="icon-button"
+                  className="reveal"
                   aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
                   onClick={() => setVisible(!visible)}
                 >
@@ -156,21 +156,17 @@ export function Login() {
               className="text-button recovery"
               onClick={switchMode}
             >
-              {recovery && <ArrowLeft size={16} />}{" "}
+              {recovery && <ArrowLeft size={16} />}
               {recovery ? "Voltar para o login" : "Esqueci minha senha"}
             </button>
           </form>
-          <div className="login-note">
-            <ShieldCheck size={20} />
-            <p>
-              Ambiente institucional protegido.
-              <br />
-              As atividades de acesso são auditadas.
-            </p>
-          </div>
-        </div>
-        <footer>SIO · Santa Casa de Pelotas</footer>
-      </section>
+        </section>
+
+        <footer className="login-foot">
+          <ShieldCheck size={16} /> Ambiente institucional protegido · acessos
+          auditados
+        </footer>
+      </div>
     </main>
   );
 }

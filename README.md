@@ -94,3 +94,21 @@ Configure HTTPS no proxy local, `NODE_ENV=production`, `APP_ORIGIN=https://domin
 Separe a credencial de migrations da execução com menor privilégio. Configure inicialização do PM2 pelo Agendador/serviço institucional no Windows. Valide reinício do servidor, certificados, backup e permissões com a TI. Atualização: backup → migrations → build → `pm2 restart server --update-env` → `/health` e login. Não declare homologação hospitalar apenas a partir dos testes automatizados.
 
 A identidade visual segue a descrição recebida; imagem/logotipo oficiais não foram fornecidos. Consulte [arquitetura](docs/ARQUITETURA.md) e [manual de validação](docs/HOMOLOGACAO.md).
+
+## Atualização — novembro/2026
+
+- **Acesso pela rede**: o servidor escuta em `0.0.0.0` e aceita automaticamente
+  `localhost` e os IPs da máquina na porta configurada (ex.: `http://192.168.2.214:5004`).
+  Endereços extras (DNS interno) podem ser listados em `APP_ORIGIN` (separados
+  por vírgula) ou `ALLOWED_HOSTS`. Libere a porta 5004 no Firewall do Windows.
+- **Gerentes e gestores** têm e-mail e login de acesso opcional; o gestor pode
+  ter **vários setores** vinculados.
+- **Escalonamento**: se o gestor não responder no prazo escolhido pela Ouvidoria,
+  o caso fica vermelho ("Em atraso · com gerente") e o gerente do gestor passa a
+  ter **24h** para responder ("Responder como gerente"). Passadas as 24h, o status
+  vira "Gerente em atraso" e Ouvidoria e Direção são notificadas. Casos sigilosos
+  não são abertos ao gerente automaticamente: a Ouvidoria decide se autoriza.
+- **Painel indicador / Painel da Direção**: totais, abertas, por área, por setor,
+  gestores que mais receberam, quem está em atraso e quem não respondeu no prazo.
+  A Direção acompanha todas as manifestações não sigilosas (sigilosas só nos totais).
+- Após atualizar: `npm run migrate` (aplica a migration 004) e `npm run build`.

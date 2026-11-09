@@ -16,6 +16,9 @@ const base = {
   nome: z.string().trim().min(2).max(160),
   ativo: z.boolean().default(true),
 };
+const optionalEmail = z
+  .union([z.email("E-mail inválido."), z.literal("")])
+  .default("");
 const description = { descricao: z.string().trim().max(1000).default("") };
 export const catalogSchemas = {
   areas_tecnicas: z.object({ ...base, ...description }).strict(),
@@ -32,6 +35,7 @@ export const catalogSchemas = {
   gerentes: z
     .object({
       ...base,
+      email: optionalEmail,
       setor_id: uuid.optional(),
       usuario_id: uuid.nullable().optional(),
       area_id: uuid.optional(),
@@ -40,8 +44,10 @@ export const catalogSchemas = {
   gestores: z
     .object({
       ...base,
-      area_id: uuid,
-      setor_id: uuid,
+      email: optionalEmail,
+      area_id: uuid.nullable().optional(),
+      setor_id: uuid.nullable().optional(),
+      setores: z.array(uuid).max(100).optional(),
       gerente_id: uuid,
       usuario_id: uuid.nullable().optional(),
     })
@@ -117,6 +123,7 @@ export const caseSchema = z
     contato_usuario_id: uuid.nullable().default(null),
     conflitos: z.array(uuid).max(50).default([]),
     terceiro_confirmado: z.literal(true),
+    ocultar_contato: z.boolean().default(false),
     encaminhar: z.boolean().default(false),
     justificativa: z.string().max(1000).optional(),
     versao: z.number().int().optional(),

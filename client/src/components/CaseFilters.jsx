@@ -42,7 +42,27 @@ export function CaseFilters({ value, setValue, lookups = {}, search = true }) {
         ],
         ["gestor_id", "Gestor", lookups.gestores],
         ["gerente_id", "Gerente", lookups.gerentes],
-        ["status", "Status", ["Concluído", "Em andamento", "Em atraso"]],
+        [
+          "setor_id",
+          "Setor",
+          lookups.setores?.filter(
+            (r) => !value.area_id || r.area_id === value.area_id,
+          ),
+        ],
+        [
+          "status",
+          "Status",
+          [
+            "Em andamento",
+            "Em validação",
+            "Atrasadas",
+            "Em atraso",
+            "Com gerente",
+            "Gerente em atraso",
+            "Concluído",
+            "Rascunho",
+          ],
+        ],
         ["prazo_id", "Prazo", lookups.prazos],
         ["canal", "Canal", ["E-mail", "Pessoal", "Telefone"]],
       ].map(([k, label, items]) => (
@@ -63,6 +83,8 @@ export function CaseFilters({ value, setValue, lookups = {}, search = true }) {
           <option value="">Todos</option>
           <option value="proximo">Próximas 24h</option>
           <option value="vencido">Vencido</option>
+          <option value="gerente">Encaminhadas ao gerente</option>
+          <option value="fora">Gestor não respondeu no prazo</option>
         </select>
       </Field>
       <button className="secondary" onClick={() => setValue({})}>

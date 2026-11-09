@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { PageTitle } from "../components/PageTitle.jsx";
 import { CaseFilters, queryString } from "../components/CaseFilters.jsx";
@@ -8,12 +9,14 @@ import {
   formatDate,
   day,
   Feedback,
+  remaining,
 } from "../components/Forms.jsx";
 import { useData } from "../hooks/useData.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 export function Cases() {
   const { user } = useAuth();
-  const [filters, setFilters] = useState({}),
+  const [params] = useSearchParams();
+  const [filters, setFilters] = useState(() => Object.fromEntries(params)),
     [page, setPage] = useState(1),
     [order, setOrder] = useState("numero"),
     [direction, setDirection] = useState("desc");
@@ -95,7 +98,13 @@ export function Cases() {
                 {data.data?.items.map((m) => (
                   <tr
                     key={m.id}
-                    className={m.status === "Em atraso" ? "overdue-row" : ""}
+                    className={
+                      m.status === "Gerente em atraso"
+                        ? "critical-row"
+                        : ["Em atraso", "Com gerente"].includes(m.status)
+                          ? "overdue-row"
+                          : ""
+                    }
                   >
                     <td>{m.registro}</td>
                     <td>{day(m.data_manifestacao)}</td>
@@ -108,8 +117,10 @@ export function Cases() {
                     <td>{formatDate(m.vencimento)}</td>
                     <td>
                       <Status value={m.status} />
-                      {m.etapa === "rascunho" && (
-                        <small className="cell-sub">Rascunho</small>
+                      {["Com gerente", "Gerente em atraso"].includes(m.status) && (
+                        <small className="cell-sub">
+                          Gerente: {m.gerente_nome} · {remaining(m.prazo_gerente)}
+                        </small>
                       )}
                     </td>
                     <td>

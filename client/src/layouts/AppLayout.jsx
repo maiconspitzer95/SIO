@@ -11,12 +11,19 @@ import {
   ClipboardList,
   Settings,
   ChartColumn,
+  MessagesSquare,
 } from "lucide-react";
 import { Brand } from "../components/Brand.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { Notifications } from "../components/Notifications.jsx";
-import logoUrl from "../assets/santacasalogo.png";
 
+const roleNames = {
+  MASTER: "Administração",
+  OUVIDORIA: "Ouvidoria",
+  GESTOR: "Gestor",
+  GERENTE: "Gerente",
+  DIRECAO: "Direção",
+};
 export function AppLayout() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -42,7 +49,15 @@ export function AppLayout() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const links = [
-    { path: "/", label: "Visão geral", icon: LayoutDashboard },
+    {
+      path: "/",
+      label: user.permissoes.includes("indicadores.consultar")
+        ? user.perfis.includes("DIRECAO")
+          ? "Painel da Direção"
+          : "Painel indicador"
+        : "Visão geral",
+      icon: LayoutDashboard,
+    },
     ...(user.permissoes.includes("manifestacoes.acompanhar")
       ? [
           {
@@ -90,7 +105,7 @@ export function AppLayout() {
         className={`sidebar ${open ? "open" : ""}`}
         inert={mobile && !open}
       >
-        <Brand light />
+        <Brand light showText={false} />
         <button
           className="mobile-close icon-button"
           aria-label="Fechar menu"
@@ -102,6 +117,7 @@ export function AppLayout() {
         <nav aria-label="Menu principal">
           {links.map(({ path, label, icon: Icon }) => (
             <NavLink
+              viewTransition
               end={path === "/"}
               key={path}
               to={path}
@@ -131,12 +147,9 @@ export function AppLayout() {
             <Menu />
           </button>
           <div className="topbar-identity">
-            <img
-              src={logoUrl}
-              alt="Santa Casa de Pelotas"
-              className="topbar-logo"
-            />
-            <span className="header-divider" />
+            <span className="topbar-mark" aria-hidden="true">
+              <MessagesSquare size={18} />
+            </span>
             <strong>SIO</strong>
             <span className="header-divider" />{" "}
             <span>Sistema Integrado de Ouvidoria</span>
@@ -146,7 +159,7 @@ export function AppLayout() {
             <div className="avatar">{user.nome.slice(0, 1).toUpperCase()}</div>
             <div className="user-info">
               <strong>{user.nome}</strong>
-              <small>{user.perfis.join(" · ")}</small>
+              <small>{user.perfis.map((p) => roleNames[p] || p).join(" · ")}</small>
             </div>
             <button
               className="icon-button"

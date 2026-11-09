@@ -22,9 +22,11 @@ export const roleCapabilities = {
     "manifestacoes.acompanhar",
     "indicadores.consultar",
     "manifestacoes.providenciar",
+    "manifestacoes.responder_escalonada",
   ],
   DIRECAO: [
     "manifestacoes.acompanhar",
+    "manifestacoes.acompanhar_todas",
     "indicadores.consultar",
     "direcao.registrar",
   ],

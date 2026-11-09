@@ -85,8 +85,8 @@ export function caseRoutes(pool) {
       ];
       const m = (
         await db.query(
-          `INSERT INTO manifestacoes(${fields.join(",")},criado_por,restrito) VALUES(${fields.map((_, i) => "$" + (i + 1)).join(",")},$11,$12) RETURNING *`,
-          [...fields.map((k) => d[k]), req.user.id, refs.restricted],
+          `INSERT INTO manifestacoes(${fields.join(",")},criado_por,restrito,ocultar_contato) VALUES(${fields.map((_, i) => "$" + (i + 1)).join(",")},$11,$12,$13) RETURNING *`,
+          [...fields.map((k) => d[k]), req.user.id, refs.restricted, d.ocultar_contato],
         )
       ).rows[0];
       await db.query(
@@ -154,16 +154,31 @@ export function caseRoutes(pool) {
           [m.id],
         )
       ).rows.map((r) => r.usuario_id);
-    } else
+    } else {
       data.historico_manifestacoes = data.historico_manifestacoes.map(
         ({ dados, ...h }) => h,
       );
+      // Dados do contato só aparecem se a Ouvidoria não marcou "ocultar".
+      if (!m.ocultar_contato)
+        data.contato = (
+          await pool.query(
+            "SELECT nome,email,telefone FROM contatos_manifestacao WHERE manifestacao_id=$1",
+            [m.id],
+          )
+        ).rows[0];
+    }
     data.actions = {
       editar:
         req.user.perfis.includes("OUVIDORIA") &&
         req.user.permissoes.includes("manifestacoes.editar") &&
         m.etapa !== "concluida",
       operar: req.user.perfis.includes("OUVIDORIA"),
+      escalar:
+        req.user.perfis.includes("OUVIDORIA") &&
+        req.user.permissoes.includes("manifestacoes.encaminhar") &&
+        ["encaminhada", "complementacao"].includes(m.etapa) &&
+        new Date(m.vencimento) < new Date() &&
+        !m.escalado_gerente_em,
       responder:
         req.user.permissoes.includes("manifestacoes.responder") &&
         req.user.perfis.includes("GESTOR") &&
@@ -174,6 +189,17 @@ export function caseRoutes(pool) {
           )
         ).rowCount > 0,
       discutir: req.user.permissoes.includes("direcao.registrar"),
+      responder_gerente:
+        req.user.permissoes.includes("manifestacoes.responder_escalonada") &&
+        req.user.perfis.includes("GERENTE") &&
+        ["encaminhada", "complementacao"].includes(m.etapa) &&
+        !!m.escalado_gerente_em &&
+        (
+          await pool.query(
+            "SELECT 1 FROM gestores g JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.id=$1 AND ge.usuario_id=$2",
+            [m.gestor_id, req.user.id],
+          )
+        ).rowCount > 0,
       providenciar:
         req.user.permissoes.includes("manifestacoes.providenciar") &&
         (
@@ -222,7 +248,7 @@ export function caseRoutes(pool) {
         )
       ).rows[0];
       await db.query(
-        "UPDATE manifestacoes SET data_manifestacao=$1,tipo=$2,canal=$3,setor_id=$4,local_complemento=$5,relato=$6,restrito=restrito OR $7,versao=versao+1,atualizado_em=now() WHERE id=$8",
+        "UPDATE manifestacoes SET data_manifestacao=$1,tipo=$2,canal=$3,setor_id=$4,local_complemento=$5,relato=$6,restrito=restrito OR $7,ocultar_contato=$9,versao=versao+1,atualizado_em=now() WHERE id=$8",
         [
           d.data_manifestacao,
           d.tipo,
@@ -232,6 +258,7 @@ export function caseRoutes(pool) {
           d.relato,
           refs.restricted,
           m.id,
+          d.ocultar_contato,
         ],
       );
       await db.query(
@@ -277,6 +304,8 @@ export function caseRoutes(pool) {
             "autorizar",
             "revogar",
             "providenciar",
+            "responder_gerente",
+            "escalar",
           ]),
           versao: z.number().int(),
           justificativa: z.string().trim().max(10000).default(""),
@@ -313,6 +342,7 @@ export function caseRoutes(pool) {
           "concluir",
           "autorizar",
           "revogar",
+          "escalar",
         ].includes(d.acao)
       )
         assertOuvidoria(
@@ -361,6 +391,96 @@ export function caseRoutes(pool) {
           [m.id, req.user.id, "Providência gerencial autorizada", d.resposta],
         );
       }
+      if (d.acao === "escalar") {
+        if (!["encaminhada", "complementacao"].includes(m.etapa))
+          throw new HttpError(409, "Não há solicitação aguardando resposta do gestor.");
+        if (!(new Date(m.vencimento) < new Date()))
+          throw new HttpError(
+            409,
+            "Só é possível encaminhar ao gerente depois que o prazo do gestor vencer.",
+          );
+        if (m.escalado_gerente_em)
+          throw new HttpError(409, "Esta manifestação já foi encaminhada ao gerente.");
+        const ger = (
+          await db.query(
+            "SELECT ge.id, ge.nome, ge.usuario_id, ge.ativo FROM gestores g JOIN gerentes ge ON ge.id=g.gerente_id WHERE g.id=$1",
+            [m.gestor_id],
+          )
+        ).rows[0];
+        if (!ger?.ativo)
+          throw new HttpError(409, "O gestor não possui gerente responsável ativo.");
+        if (
+          ger.usuario_id &&
+          (
+            await db.query(
+              "SELECT 1 FROM conflitos_manifestacao WHERE manifestacao_id=$1 AND usuario_id=$2",
+              [m.id, ger.usuario_id],
+            )
+          ).rowCount
+        )
+          throw new HttpError(409, "O gerente possui conflito de interesses neste caso.");
+        await db.query(
+          "UPDATE manifestacoes SET escalado_gerente_em=now(),vencimento_gerente=now()+interval '24 hours',alerta_gerente_em=COALESCE(alerta_gerente_em,now()) WHERE id=$1",
+          [m.id],
+        );
+        const sigiloso =
+          m.restrito ||
+          (await db.query("SELECT restrito FROM motivos WHERE id=$1", [m.motivo_id])).rows[0]?.restrito;
+        // Casos não sigilosos já são visíveis ao gerente; nos sigilosos a autorização é concedida aqui.
+        if (ger.usuario_id && sigiloso)
+          await db.query(
+            `INSERT INTO autorizacoes_restritas(manifestacao_id,usuario_id,concedido_por,justificativa)
+             VALUES($1,$2,$3,$4)
+             ON CONFLICT(manifestacao_id,usuario_id) DO UPDATE SET revogado_em=NULL,concedido_por=excluded.concedido_por,justificativa=excluded.justificativa`,
+            [m.id, ger.usuario_id, req.user.id, "Encaminhado ao gerente por atraso do gestor"],
+          );
+        await notify(
+          db,
+          m.id,
+          [ger.usuario_id, gestor.usuario_id],
+          `Manifestação em atraso encaminhada ao gerente ${ger.nome} — 24h para responder`,
+          `${m.id}:escalada:${m.versao}`,
+        );
+      }
+      if (d.acao === "responder_gerente") {
+        const isManager = (
+          await db.query(
+            "SELECT 1 FROM gerentes WHERE id=(SELECT gerente_id FROM gestores WHERE id=$1) AND usuario_id=$2 AND ativo",
+            [m.gestor_id, req.user.id],
+          )
+        ).rowCount;
+        if (
+          !req.user.perfis.includes("GERENTE") ||
+          !req.user.permissoes.includes("manifestacoes.responder_escalonada") ||
+          !isManager
+        )
+          throw new HttpError(
+            403,
+            "Somente o gerente responsável pelo gestor pode responder.",
+          );
+        if (!["encaminhada", "complementacao"].includes(m.etapa))
+          throw new HttpError(409, "Não há solicitação aguardando resposta.");
+        if (!m.escalado_gerente_em)
+          throw new HttpError(
+            409,
+            "O caso ainda não foi encaminhado pela Ouvidoria ao gerente.",
+          );
+        if (!d.resposta) throw new HttpError(400, "Informe a resposta.");
+        await db.query(
+          "INSERT INTO respostas(manifestacao_id,autor_id,analise,justificativa,providencias,resposta,origem) VALUES($1,$2,$3,$4,$5,$6,'gerente')",
+          [m.id, req.user.id, d.analise || "", d.justificativa, d.providencias, d.resposta],
+        );
+        await db.query(
+          "UPDATE manifestacoes SET etapa='validacao',resposta_gerente_em=now(),escalado_gerente_em=COALESCE(escalado_gerente_em,now()) WHERE id=$1",
+          [m.id],
+        );
+        await notifyOuvidoria(
+          db,
+          m.id,
+          "Resposta do gerente recebida (caso escalonado)",
+          `${m.id}:resposta-gerente:${m.versao}`,
+        );
+      }
       if (d.acao === "responder") {
         if (
           !req.user.perfis.includes("GESTOR") ||
@@ -373,14 +493,13 @@ export function caseRoutes(pool) {
           );
         if (!["encaminhada", "complementacao"].includes(m.etapa))
           throw new HttpError(409, "Não há solicitação aguardando resposta.");
-        if (!d.analise || !d.resposta)
-          throw new HttpError(400, "Informe análise e resposta.");
+        if (!d.resposta) throw new HttpError(400, "Informe a resposta.");
         await db.query(
           "INSERT INTO respostas(manifestacao_id,autor_id,analise,justificativa,providencias,resposta) VALUES($1,$2,$3,$4,$5,$6)",
           [
             m.id,
             req.user.id,
-            d.analise,
+            d.analise || "",
             d.justificativa,
             d.providencias,
             d.resposta,
@@ -424,14 +543,14 @@ export function caseRoutes(pool) {
         );
       }
       if (d.acao === "concluir") {
-        if (m.etapa !== "aprovada" || !d.resposta || !d.procedimento)
+        if (!["validacao", "aprovada"].includes(m.etapa) || !d.resposta)
           throw new HttpError(
             409,
-            "Aprove a resposta e informe a devolutiva final e o procedimento de retorno ao contato.",
+            "Finalize após receber a resposta e informe a devolutiva final.",
           );
         await db.query(
           "UPDATE manifestacoes SET etapa='concluida',resposta_final=$1,procedimento_retorno=$2,respondido_em=now(),concluido_em=now(),concluido_atraso=now()>vencimento WHERE id=$3",
-          [d.resposta, d.procedimento, m.id],
+          [d.resposta, d.procedimento || "", m.id],
         );
         await notify(
           db,

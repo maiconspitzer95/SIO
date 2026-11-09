@@ -98,7 +98,8 @@ export async function validManager(db, id, area) {
        JOIN gerentes ge ON ge.id=g.gerente_id
        LEFT JOIN usuarios u ON u.id=g.usuario_id
        LEFT JOIN usuarios gu ON gu.id=ge.usuario_id
-       WHERE g.id=$1 AND g.area_id=$2 AND g.ativo AND ge.ativo
+       WHERE g.id=$1 AND g.ativo AND ge.ativo
+         AND (g.area_id=$2 OR EXISTS(SELECT 1 FROM gestor_setores gs JOIN setores s ON s.id=gs.setor_id WHERE gs.gestor_id=g.id AND s.area_id=$2))
          AND (g.usuario_id IS NULL OR (u.ativo AND EXISTS(SELECT 1 FROM usuario_perfis up JOIN perfis p ON p.id=up.perfil_id WHERE up.usuario_id=u.id AND p.codigo='GESTOR')))`,
       [id, area],
     )
@@ -138,7 +139,12 @@ export async function forward(
     [
       m.id,
       g.id,
-      g.setor_id,
+      (await db.query(
+        "SELECT 1 FROM gestor_setores WHERE gestor_id=$1 AND setor_id=$2",
+        [g.id, m.setor_id],
+      )).rowCount
+        ? m.setor_id
+        : g.setor_id || m.setor_id,
       user.id,
       due,
       justification,

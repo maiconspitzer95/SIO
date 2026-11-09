@@ -299,7 +299,8 @@ it("rascunho é privado e encaminhamento exige prazo aprovado", async () => {
   await action("ouv", draftId, "encaminhar");
   const d = await call("gestor", "get", "/api/cases/" + draftId);
   assert.equal(d.manifestacao.etapa, "encaminhada");
-  assert.equal(d.contato, undefined);
+  // Contato visível ao gestor quando a Ouvidoria não marcou "ocultar dados".
+  assert.equal(d.contato.nome, "Contato de teste");
 });
 it("numeração PostgreSQL é única em gravações concorrentes", async () => {
   const result = await Promise.all(
@@ -318,20 +319,16 @@ it("numeração PostgreSQL é única em gravações concorrentes", async () => {
     await call("ouv", "post", "/api/cases", { ...base, encaminhar: true }, 201)
   ).id;
 });
-it("conhecer ID não concede acesso; gerência acompanha subordinados e Direção exige autorização", async () => {
-  for (const role of ["outro", "admin", "direcao"])
+it("conhecer ID não concede acesso; gerente só acessa o que a Ouvidoria encaminhou; Direção acompanha", async () => {
+  for (const role of ["outro", "admin", "gerente"])
     await call(role, "get", "/api/cases/" + caseId, null, 404);
-  await call("gerente", "get", "/api/cases/" + caseId);
-  await action("ouv", caseId, "autorizar", {
-    usuario_id: users.direcao,
-    justificativa: "Discussão autorizada",
-  });
+  // Direção acompanha todas as manifestações não sigilosas pelo painel.
   await call("direcao", "get", "/api/cases/" + caseId);
-  await action("ouv", caseId, "revogar", {
-    usuario_id: users.direcao,
-    justificativa: "Fim da autorização",
-  });
-  await call("direcao", "get", "/api/cases/" + caseId, null, 404);
+  assert.ok(
+    (await call("direcao", "get", "/api/cases")).items.some(
+      (m) => m.id === caseId,
+    ),
+  );
 });
 it("edição exige justificativa e versão; preserva dados anteriores", async () => {
   const m = (await call("ouv", "get", "/api/cases/" + caseId)).manifestacao;
@@ -454,7 +451,7 @@ it("resposta, complementação, aprovação, discussão e conclusão preservam v
     /imutável/,
   );
 });
-it("alertas não duplicam sob concorrência e notificam o gerente", async () => {
+it("alertas não duplicam; Ouvidoria encaminha o atraso ao gerente", async () => {
   await pool.query(
     "UPDATE manifestacoes SET vencimento=now()-interval '1 hour' WHERE id=$1",
     [draftId],
@@ -473,6 +470,17 @@ it("alertas não duplicam sob concorrência e notificam o gerente", async () => 
   const d = (await call("ouv", "get", "/api/cases/" + draftId)).manifestacao;
   assert.equal(d.status, "Em atraso");
   assert.ok(d.alerta_gerente_em);
+  // Vencido não vai sozinho ao gerente: a Ouvidoria decide encaminhar.
+  assert.ok(
+    !(await call("gerente", "get", "/api/notifications")).items.some(
+      (x) => x.manifestacao_id === draftId,
+    ),
+  );
+  await action("ouv", draftId, "escalar", { justificativa: "Sem retorno do gestor" });
+  assert.equal(
+    (await call("ouv", "get", "/api/cases/" + draftId)).manifestacao.status,
+    "Com gerente",
+  );
   const n = await call("gerente", "get", "/api/notifications"),
     notice = n.items.find((n) => n.manifestacao_id === draftId);
   assert.ok(notice);
@@ -547,7 +555,7 @@ it("relatórios por período e exportações PDF/Excel preservam o escopo", asyn
     .parse(binary)
     .expect(200);
   assert.equal(pdf.body.subarray(0, 4).toString(), "%PDF");
-  const xlsx = await sessions.gerente.agent
+  const xlsx = await sessions.ouv.agent
     .get("/api/reports/export/xlsx")
     .buffer(true)
     .parse(binary)
@@ -555,8 +563,16 @@ it("relatórios por período e exportações PDF/Excel preservam o escopo", asyn
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(xlsx.body);
   const cells = JSON.stringify(book.getWorksheet(1).getSheetValues());
-  assert.ok(!cells.includes("Conteúdo restrito exclusivo"));
   assert.ok(cells.includes("Retorno institucional"));
+  // Gerente exporta somente o que lhe foi encaminhado (sem conteúdo sigiloso)
+  const gx = await sessions.gerente.agent
+    .get("/api/reports/export/xlsx")
+    .buffer(true)
+    .parse(binary)
+    .expect(200);
+  const gbook = new ExcelJS.Workbook();
+  await gbook.xlsx.load(gx.body);
+  assert.ok(!JSON.stringify(gbook.getWorksheet(1).getSheetValues()).includes("Conteúdo restrito exclusivo"));
 });
 it("gestão de usuários impede autoelevação e permite inativação", async () => {
   await call("admin", "post", "/api/catalogs/users", { nome: "Falha", login: "falha_senha", email: "falha@example.invalid", senha: "maisDe6Caracteres", perfis: ["GESTOR"] }, 400); const u = await call(

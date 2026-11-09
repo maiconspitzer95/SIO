@@ -63,7 +63,7 @@ it("migrations são idempotentes e perfis persistem", async () => {
   assert.equal((await pool.query("SELECT * FROM perfis")).rowCount, 5);
   assert.equal(
     (await pool.query("SELECT * FROM schema_migrations")).rowCount,
-    3,
+    5,
   );
 });
 it("produção serve a SPA e emite cookie Secure com CSP atrás do proxy local", async () => {

@@ -1,11 +1,14 @@
 import { HttpError } from "../middlewares/security.js";
 import { parse, uuid, date } from "../validators/operations.js";
 export const joins = `FROM manifestacoes m JOIN motivos mot ON mot.id=m.motivo_id JOIN areas_tecnicas a ON a.id=m.area_id JOIN gestores g ON g.id=m.gestor_id JOIN gerentes ge ON ge.id=g.gerente_id JOIN setores s ON s.id=m.setor_id JOIN prazos p ON p.id=m.prazo_id`;
-export const statusSql = `CASE WHEN m.etapa='concluida' THEN 'Concluído' WHEN m.etapa IN ('encaminhada','complementacao') AND m.vencimento<now() THEN 'Em atraso' ELSE 'Em andamento' END`;
-export const columns = `m.*, 'OUV-'||lpad(m.numero::text,greatest(6,length(m.numero::text)),'0') registro, a.nome area_nome,mot.nome motivo_nome,g.nome gestor_nome,s.nome setor_nome,ge.nome gerente_nome,p.tipo prazo_tipo,${statusSql} status`;
+/** Prazo do gerente: 24h após a Ouvidoria encaminhar o caso atrasado a ele. */
+export const gerenteDeadlineSql = `m.vencimento_gerente`;
+export const statusSql = `CASE WHEN m.etapa='concluida' THEN 'Concluído' WHEN m.etapa='rascunho' THEN 'Rascunho' WHEN m.etapa IN ('encaminhada','complementacao') AND m.escalado_gerente_em IS NOT NULL AND m.vencimento_gerente<now() THEN 'Gerente em atraso' WHEN m.etapa IN ('encaminhada','complementacao') AND m.escalado_gerente_em IS NOT NULL THEN 'Com gerente' WHEN m.etapa IN ('encaminhada','complementacao') AND m.vencimento<now() THEN 'Em atraso' WHEN m.etapa IN ('validacao','aprovada') THEN 'Em validação' ELSE 'Em andamento' END`;
+export const columns = `m.*, 'OUV-'||lpad(m.numero::text,greatest(6,length(m.numero::text)),'0') registro, a.nome area_nome,mot.nome motivo_nome,g.nome gestor_nome,s.nome setor_nome,ge.nome gerente_nome,p.tipo prazo_tipo,p.nome prazo_nome,ge.email gerente_email,g.email gestor_email,${gerenteDeadlineSql} prazo_gerente,${statusSql} status`;
 /** Filtro único aplicado ANTES da paginação e agregação; concessões não contornam conflitos. */
-export function scope(user, values = []) {
+export function scope(user, values = [], { aggregate = false } = {}) {
   if (!user.permissoes.includes("manifestacoes.acompanhar")) return "FALSE";
+  const all = user.permissoes.includes("manifestacoes.acompanhar_todas");
   const add = (v) => {
     values.push(v);
     return "$" + values.length;
@@ -14,14 +17,19 @@ export function scope(user, values = []) {
     ouv = add(user.perfis.includes("OUVIDORIA")),
     gestor = add(user.perfis.includes("GESTOR")),
     gerente = add(user.perfis.includes("GERENTE"));
+  // Gerente: na listagem/detalhe só vê o que a Ouvidoria encaminhou a ele;
+  // nos indicadores (aggregate) enxerga os números da sua área.
+  const gerenteScope = aggregate
+    ? `((ge.usuario_id=${id} AND ge.ativo) OR m.area_id IN (SELECT area_id FROM gerentes WHERE usuario_id=${id} AND ativo AND area_id IS NOT NULL))`
+    : `(ge.usuario_id=${id} AND ge.ativo AND m.escalado_gerente_em IS NOT NULL)`;
   const grant = `EXISTS(SELECT 1 FROM autorizacoes_restritas ar WHERE ar.manifestacao_id=m.id AND ar.usuario_id=${id} AND ar.revogado_em IS NULL)`;
   return `NOT mot.bloqueado AND NOT EXISTS(SELECT 1 FROM conflitos_manifestacao cf WHERE cf.manifestacao_id=m.id AND cf.usuario_id=${id})
- AND (NOT(m.restrito OR mot.restrito) OR ${grant})
- AND ((m.etapa='rascunho' AND ${ouv} AND m.criado_por=${id}) OR (m.etapa<>'rascunho' AND (${ouv} OR (${gestor} AND g.usuario_id=${id} AND g.ativo) OR (${gerente} AND ge.usuario_id=${id} AND ge.ativo) OR ${grant})))`;
+ AND (NOT(m.restrito OR mot.restrito) OR ${grant}${aggregate && all ? " OR TRUE" : ""})
+ AND ((m.etapa='rascunho' AND ${ouv} AND m.criado_por=${id}) OR (m.etapa<>'rascunho' AND (${ouv}${all ? " OR TRUE" : ""} OR (${gestor} AND g.usuario_id=${id} AND g.ativo) OR (${gerente} AND ${gerenteScope}) OR ${grant})))`;
 }
-export function filter(user, q = {}) {
+export function filter(user, q = {}, options = {}) {
   const values = [],
-    where = [scope(user, values)];
+    where = [scope(user, values, options)];
   const add = (sql, v) => {
     values.push(v);
     where.push(sql.replace("?", `$${values.length}`));
@@ -42,7 +50,10 @@ export function filter(user, q = {}) {
         `${col}=?`,
         key.endsWith("_id") ? parse(uuid, q[key]) : String(q[key]).slice(0, 80),
       );
-  if (q.status) add(`${statusSql}=?`, String(q.status));
+  if (q.status === "Atrasadas")
+    where.push(`${statusSql} IN ('Em atraso','Com gerente','Gerente em atraso')`);
+  else if (q.status) add(`${statusSql}=?`, String(q.status).slice(0, 40));
+  if (q.setor_id) add("m.setor_id=?", parse(uuid, q.setor_id));
   if (q.busca) {
     const term = String(q.busca).slice(0, 160);
     values.push("%" + term + "%");
@@ -58,6 +69,14 @@ export function filter(user, q = {}) {
   if (q.prazo === "vencido")
     where.push(
       "m.etapa IN ('encaminhada','complementacao') AND m.vencimento<now()",
+    );
+  if (q.prazo === "gerente")
+    where.push(
+      "m.etapa IN ('encaminhada','complementacao') AND m.escalado_gerente_em IS NOT NULL",
+    );
+  if (q.prazo === "fora")
+    where.push(
+      "((m.resposta_gestor_em IS NOT NULL AND m.resposta_gestor_em>m.vencimento) OR (m.resposta_gestor_em IS NULL AND m.etapa IN ('encaminhada','complementacao') AND m.vencimento<now()))",
     );
   return { values, sql: where.join(" AND ") };
 }

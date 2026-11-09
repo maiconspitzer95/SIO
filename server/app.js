@@ -26,6 +26,10 @@ export async function createApp(pool, config) {
     helmet({
       strictTransportSecurity:
         config.NODE_ENV === "production" ? undefined : false,
+      // Em HTTP pela rede interna (IP) o navegador ignora COOP e gera aviso no console.
+      crossOriginOpenerPolicy:
+        config.NODE_ENV === "production" ? undefined : false,
+      originAgentCluster: config.NODE_ENV === "production",
       contentSecurityPolicy: {
         directives: {
           "default-src": ["'self'"],

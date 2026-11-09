@@ -2,6 +2,7 @@ import { readConfig } from "./config/env.js";
 import { createPool } from "./config/database.js";
 import { createApp } from "./app.js";
 import { processAlerts } from "./services/alerts.js";
+import { localAddresses } from "./config/env.js";
 
 const config = readConfig();
 const pool = createPool(config);
@@ -17,9 +18,13 @@ const checkAlerts = () =>
 await checkAlerts();
 const alertTimer = setInterval(checkAlerts, 60000);
 alertTimer.unref();
-const server = app.listen(config.PORT, config.HOST, () =>
-  console.log(`SIO disponível na porta ${config.PORT}.`),
-);
+const server = app.listen(config.PORT, config.HOST, () => {
+  console.log(`SIO disponível na porta ${config.PORT}.`);
+  const hosts =
+    config.HOST === "0.0.0.0" ? ["localhost", ...localAddresses()] : [config.HOST];
+  for (const h of [...new Set(hosts)])
+    console.log(`  → http://${h}:${config.PORT}`);
+});
 // Limpeza somente de registros transitórios. Auditoria e dados institucionais são preservados.
 const cleanup = setInterval(
   () =>
