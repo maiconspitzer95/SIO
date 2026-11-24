@@ -1,0 +1,345 @@
+/* Tela de login do SIO — padrão de login da T.I. (cartão em "liquid glass" sobre fundo azul-noite animado).
+   Tudo fica sob .sio-login para não vazar para o restante do sistema. */
+
+.sio-login {
+  --azul-noite: #01040e;
+  --vidro: rgba(14, 32, 78, 0.52);
+  --vidro-campo: rgba(8, 22, 58, 0.55);
+  --borda-vidro: rgba(150, 195, 255, 0.22);
+  --texto: #eef4ff;
+  --texto-suave: #a9bde3;
+  --ciano: #5ee7ff;
+  --azul-botao-1: #4f8ff0;
+  --azul-botao-2: #1f56c9;
+  --erro: #ff8a9a;
+  color-scheme: dark;
+
+  position: fixed;
+  inset: 0;
+  isolation: isolate;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) 20px max(24px, env(safe-area-inset-bottom, 0px));
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--texto);
+  background: var(--azul-noite);
+  -webkit-font-smoothing: antialiased;
+}
+.sio-login *, .sio-login *::before, .sio-login *::after { box-sizing: border-box; }
+
+/* ===== Fundo animado ===== */
+.sio-login .sl-fundo-agua,
+.sio-login .sl-fundo-camadas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  display: block;
+  z-index: 0;
+}
+.sio-login .sl-fundo-camadas { pointer-events: none; opacity: .55; }
+/* véu que escurece e limpa o fundo, deixando só um leve clarão atrás do cartão */
+.sio-login .sl-fundo-veu {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 46%, rgba(2, 8, 23, .30), rgba(2, 8, 23, .74) 70%, rgba(1, 4, 14, .90));
+}
+
+/* parallax: o JS atualiza --mx e --my (-1 a 1) */
+.sio-login .sl-camada-longe { transform: translate(calc(var(--mx, 0) * -10px), calc(var(--my, 0) * -8px)); }
+
+/* luz correndo pelas trilhas de circuito */
+.sio-login .sl-pulso { stroke-dasharray: 70 1000; stroke-dashoffset: 70; opacity: .9; animation: sl-correr 6s linear infinite; }
+.sio-login .sl-p2 { animation-delay: -1.5s; animation-duration: 7s; }
+.sio-login .sl-p3 { animation-delay: -3s; }
+.sio-login .sl-p4 { animation-delay: -4.2s; animation-duration: 8s; }
+.sio-login .sl-p5 { animation-delay: -.8s; animation-duration: 7s; }
+.sio-login .sl-p6 { animation-delay: -3.6s; }
+.sio-login .sl-p7 { animation-delay: -5.1s; animation-duration: 8s; }
+@keyframes sl-correr { to { stroke-dashoffset: -1000; } }
+
+/* partículas subindo devagar */
+.sio-login .sl-particula {
+  opacity: 0;
+  transform-box: fill-box;
+  animation: sl-subir-particula var(--dur, 14s) linear var(--atraso, 0s) infinite;
+}
+@keyframes sl-subir-particula {
+  0% { opacity: 0; transform: translate(0, 0); }
+  15% { opacity: .7; }
+  85% { opacity: .5; }
+  100% { opacity: 0; transform: translate(var(--deriva, 0px), -420px); }
+}
+
+/* ===== Cartão de vidro: formulário central em uma coluna ===== */
+.sio-login .sl-conjunto {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  animation: sl-subir .7s cubic-bezier(.2, .8, .2, 1) both;
+}
+@keyframes sl-subir {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sio-login .sl-cartao {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  border-radius: 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .10), rgba(255, 255, 255, 0) 38%),
+    var(--vidro);
+  border: 1px solid var(--borda-vidro);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .22) inset,
+    0 -1px 0 rgba(0, 0, 0, .25) inset,
+    0 30px 70px rgba(0, 6, 28, .6),
+    0 0 0 6px rgba(120, 170, 255, .05);
+  transition: border-color .25s ease, box-shadow .25s ease;
+}
+.sio-login .sl-cartao:hover {
+  border-color: rgba(170, 215, 255, .38);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .28) inset,
+    0 -1px 0 rgba(0, 0, 0, .25) inset,
+    0 34px 80px rgba(0, 6, 28, .65),
+    0 0 0 6px rgba(120, 170, 255, .07),
+    0 0 44px rgba(94, 231, 255, .10);
+}
+/* Vidro líquido: brilho especular que acompanha o mouse (o JS atualiza --gx e --gy) */
+.sio-login .sl-cartao::before,
+.sio-login .sl-cartao::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+.sio-login .sl-cartao::before {
+  z-index: 0;
+  background:
+    radial-gradient(150px circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .24), transparent 70%),
+    radial-gradient(380px circle at var(--gx, 50%) var(--gy, 50%), rgba(94, 231, 255, .22), transparent 65%);
+}
+/* a borda do vidro acende perto do ponteiro */
+.sio-login .sl-cartao::after {
+  z-index: 3;
+  padding: 1.5px;
+  background: radial-gradient(300px circle at var(--gx, 50%) var(--gy, 50%), rgba(190, 240, 255, .95), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.sio-login .sl-cartao:hover::before,
+.sio-login .sl-cartao:hover::after { opacity: 1; }
+
+.sio-login .sl-cartao-form {
+  position: relative;
+  z-index: 1;
+  padding: 34px 36px 28px;
+  text-align: center;
+}
+
+.sio-login .sl-logo { width: 170px; height: auto; display: block; margin: 0 auto 14px; }
+
+.sio-login .sl-titulo {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.1;
+  color: var(--texto);
+}
+.sio-login .sl-nome-sistema {
+  margin: 6px 0 0;
+  font-size: .95rem;
+  font-weight: 600;
+  color: #d6e4ff;
+}
+.sio-login .sl-subtitulo {
+  margin: 4px 0 22px;
+  font-size: .8rem;
+  color: var(--texto-suave);
+}
+
+.sio-login .sl-form { text-align: left; }
+.sio-login .sl-rotulo {
+  display: block;
+  font-size: .78rem;
+  font-weight: 600;
+  color: #c6d6f5;
+  margin: 0 0 6px;
+}
+.sio-login .sl-campo {
+  position: relative;
+  margin-bottom: 14px;
+}
+.sio-login .sl-icone {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #8fa9d8;
+  pointer-events: none;
+}
+.sio-login .sl-campo input {
+  width: 100%;
+  height: 44px;
+  padding: 0 40px 0 38px;
+  border-radius: 11px;
+  border: 1px solid rgba(150, 190, 255, .24);
+  background: var(--vidro-campo);
+  color: var(--texto);
+  font: inherit;
+  font-size: .9rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06), 0 2px 6px rgba(0, 0, 0, .25) inset;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.sio-login .sl-campo input::placeholder { color: #7189b6; }
+.sio-login .sl-campo input:focus {
+  outline: none;
+  border-color: rgba(94, 231, 255, .7);
+  background: rgba(10, 30, 78, .7);
+  box-shadow: 0 0 0 3px rgba(94, 231, 255, .18), 0 2px 6px rgba(0, 0, 0, .25) inset;
+}
+/* preenchimento automático do navegador: mantém o campo escuro */
+.sio-login .sl-campo input:-webkit-autofill,
+.sio-login .sl-campo input:-webkit-autofill:hover,
+.sio-login .sl-campo input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--texto);
+  caret-color: var(--texto);
+  box-shadow: 0 0 0 1000px #0a1e4e inset;
+  transition: background-color 9999s ease-out;
+}
+.sio-login .sl-ver-senha {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8fa9d8;
+  cursor: pointer;
+}
+.sio-login .sl-ver-senha:hover { color: var(--texto); background: rgba(255, 255, 255, .06); }
+.sio-login .sl-ver-senha:focus-visible { outline: 2px solid var(--ciano); outline-offset: 1px; }
+.sio-login .sl-ver-senha svg { width: 17px; height: 17px; }
+
+.sio-login .sl-opcoes {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 18px;
+  font-size: .78rem;
+}
+.sio-login .sl-lembrar { display: inline-flex; align-items: center; gap: 7px; color: var(--texto-suave); cursor: pointer; user-select: none; }
+.sio-login .sl-lembrar input { width: 15px; height: 15px; margin: 0; accent-color: #4f8ff0; }
+.sio-login .sl-esqueci {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #8fd3ff;
+  cursor: pointer;
+}
+.sio-login .sl-esqueci:hover { text-decoration: underline; }
+.sio-login .sl-esqueci:focus-visible,
+.sio-login .sl-lembrar input:focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; border-radius: 3px; }
+
+.sio-login .sl-entrar {
+  width: 100%;
+  height: 44px;
+  border: 1px solid rgba(170, 205, 255, .45);
+  border-radius: 11px;
+  background: linear-gradient(180deg, var(--azul-botao-1), var(--azul-botao-2));
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  font-size: .92rem;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .35) inset,
+    0 10px 24px rgba(31, 86, 201, .45),
+    0 0 22px rgba(79, 143, 240, .35);
+  transition: filter .15s, transform .1s;
+}
+.sio-login .sl-entrar:hover { filter: brightness(1.08); }
+.sio-login .sl-entrar:active { transform: translateY(1px); }
+.sio-login .sl-entrar:focus-visible { outline: 2px solid var(--ciano); outline-offset: 3px; }
+.sio-login .sl-entrar[disabled] { opacity: .7; cursor: progress; }
+
+.sio-login .sl-mensagem {
+  margin: 10px 0 0;
+  font-size: .78rem;
+  line-height: 1.45;
+  color: var(--erro);
+  text-align: center;
+}
+.sio-login .sl-mensagem.sl-info { color: #bfe0ff; }
+
+.sio-login .sl-rodape {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: .74rem;
+  line-height: 1.5;
+  color: rgba(200, 216, 245, .7);
+}
+.sio-login .sl-rodape strong { color: rgba(230, 238, 255, .9); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sio-login .sl-pulso, .sio-login .sl-particula, .sio-login .sl-conjunto { animation: none; }
+  .sio-login .sl-pulso, .sio-login .sl-particula { display: none; }
+  .sio-login .sl-camada-longe { transform: none; }
+}
+@media (max-width: 700px) {
+  .sio-login .sl-conjunto { width: min(100%, 380px); }
+  .sio-login .sl-cartao { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .sio-login .sl-cartao-form { padding: 28px 20px 24px; }
+  .sio-login .sl-titulo { font-size: 1.55rem; }
+}
+
+/* ===== Ajustes do SIO ===== */
+/* neutraliza os estilos globais de label/input do main.css dentro da tela */
+.sio-login .sl-campo input { margin: 0; }
+.sio-login .sl-lembrar { font-weight: 400; }
+.sio-login .sl-lembrar input { padding: 0; border-radius: 3px; box-shadow: none; }
+
+/* recuperação de senha por código (o SIO tem esse fluxo) */
+.sio-login .sl-dica {
+  margin: -8px 0 16px;
+  font-size: .78rem;
+  line-height: 1.45;
+  color: var(--texto-suave);
+  text-align: center;
+}
+.sio-login .sl-opcoes.sl-so-voltar { justify-content: center; }
+.sio-login .sl-mensagem.sl-ok { color: #8ff0b8; }
+
+
+.sio-login .sl-opcoes { flex-wrap: wrap; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sio-login .sl-cartao { background: #0e204e; }
+}

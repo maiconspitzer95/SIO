@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App.jsx";
 import "./styles/main.css";
+import "./pages/Login.css";
+import "./styles/internal-glass.css";
 import { trackGlassPointer } from "./services/glass.js";
 trackGlassPointer();
 createRoot(document.getElementById("root")).render(
