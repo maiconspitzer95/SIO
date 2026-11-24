@@ -36,9 +36,10 @@ export const catalogSchemas = {
     .object({
       ...base,
       email: optionalEmail,
-      setor_id: uuid.optional(),
+      setor_id: uuid.nullable().optional(),
+      setores: z.array(uuid).max(100).optional(),
       usuario_id: uuid.nullable().optional(),
-      area_id: uuid.optional(),
+      area_id: uuid.nullable().optional(),
     })
     .strict(),
   gestores: z

@@ -18,9 +18,9 @@ export function scope(user, values = [], { aggregate = false } = {}) {
     gestor = add(user.perfis.includes("GESTOR")),
     gerente = add(user.perfis.includes("GERENTE"));
   // Gerente: na listagem/detalhe só vê o que a Ouvidoria encaminhou a ele;
-  // nos indicadores (aggregate) enxerga os números da sua área.
+  // nos indicadores (aggregate) enxerga os números da sua área e dos setores vinculados.
   const gerenteScope = aggregate
-    ? `((ge.usuario_id=${id} AND ge.ativo) OR m.area_id IN (SELECT area_id FROM gerentes WHERE usuario_id=${id} AND ativo AND area_id IS NOT NULL))`
+    ? `((ge.usuario_id=${id} AND ge.ativo) OR m.area_id IN (SELECT area_id FROM gerentes WHERE usuario_id=${id} AND ativo AND area_id IS NOT NULL) OR m.setor_id IN (SELECT gs.setor_id FROM gerente_setores gs JOIN gerentes gx ON gx.id=gs.gerente_id WHERE gx.usuario_id=${id} AND gx.ativo))`
     : `(ge.usuario_id=${id} AND ge.ativo AND m.escalado_gerente_em IS NOT NULL)`;
   const grant = `EXISTS(SELECT 1 FROM autorizacoes_restritas ar WHERE ar.manifestacao_id=m.id AND ar.usuario_id=${id} AND ar.revogado_em IS NULL)`;
   return `NOT mot.bloqueado AND NOT EXISTS(SELECT 1 FROM conflitos_manifestacao cf WHERE cf.manifestacao_id=m.id AND cf.usuario_id=${id})
