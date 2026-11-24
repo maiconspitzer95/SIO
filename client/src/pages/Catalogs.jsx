@@ -29,8 +29,8 @@ const definitions = {
     fields: {
       nome: "Nome",
       email: "E-mail",
-      setor_id: "Setor",
       usuario_id: "Login de acesso (opcional)",
+      setores: "Setores vinculados",
     },
   },
   gestores: {
@@ -92,7 +92,10 @@ function payloadFrom(row, extra = {}) {
   const body = { ativo: row.ativo };
   for (const k of keys) {
     let v = row[k];
-    if (k === "setores") v = (v || []).map((x) => x.id ?? x);
+    if (k === "setores") {
+      v = (v || []).map((x) => x.id ?? x);
+      if (!v.length && row.setor_id) v = [row.setor_id];
+    }
     if (k === "usuario_id") v = v || null;
     if (k === "email" && v == null) v = "";
     if (v !== undefined && v !== null) body[k] = v;
@@ -134,7 +137,7 @@ export function Catalogs() {
                 : key === "perfis"
                   ? []
                   : ""));
-    if (tab === "gestores")
+    if (tab === "gestores" || tab === "gerentes")
       d.setores = (row?.setores || []).map((x) => x.id ?? x);
     if ("usuario_id" in d) d.usuario_id = row?.usuario_id || "";
     if (tab === "prazos" && !row)
@@ -199,8 +202,8 @@ export function Catalogs() {
         }
       }
       if ("usuario_id" in body && !body.usuario_id) body.usuario_id = null;
-      if (tab === "gerentes" && !body.setor_id) {
-        setError("Selecione o setor do gerente.");
+      if (tab === "gerentes" && !body.setores?.length) {
+        setError("Selecione pelo menos um setor para o gerente.");
         setBusy(false);
         return;
       }
@@ -257,7 +260,7 @@ export function Catalogs() {
         .toLowerCase()
         .includes(search.toLowerCase());
       if (!matchText) return false;
-      if (tab === "gestores") {
+      if (tab === "gestores" || tab === "gerentes") {
         const sectors = r.setores || [];
         if (filterArea && !sectors.some((x) => x.area_id === filterArea))
           return false;
@@ -379,8 +382,9 @@ export function Catalogs() {
                         onChange={(v) => change("setores", v)}
                       />
                       <small className="muted">
-                        Um gestor pode responder por vários setores. O primeiro
-                        selecionado é o setor principal.
+                        {tab === "gerentes"
+                          ? "Um gerente pode responder por vários setores, de áreas diferentes. O primeiro selecionado é o setor principal."
+                          : "Um gestor pode responder por vários setores. O primeiro selecionado é o setor principal."}
                       </small>
                     </div>
                   );
@@ -505,7 +509,7 @@ export function Catalogs() {
               setPage(1);
             }}
           />
-          {tab === "gestores" && (
+          {(tab === "gestores" || tab === "gerentes") && (
             <>
               <select
                 aria-label="Filtrar por área"
@@ -573,7 +577,7 @@ export function Catalogs() {
                   <tr>
                     <th>Nome</th>
                     <th>E-mail</th>
-                    <th>Setor</th>
+                    <th>Setores</th>
                     <th>Situação</th>
                     <th>Ações</th>
                   </tr>
@@ -589,11 +593,12 @@ export function Catalogs() {
                       </td>
                       <td>{row.email || "—"}</td>
                       <td>
-                        {row.setor_nome ||
-                          lookups.data?.setores?.find(
-                            (s) => s.id === row.setor_id,
-                          )?.nome ||
-                          "—"}
+                        <div className="chip-list">
+                          {(row.setores || []).map((x) => (
+                            <span key={x.id}>{x.nome}</span>
+                          ))}
+                          {!row.setores?.length && (row.setor_nome || "—")}
+                        </div>
                       </td>
                       <td>
                         <span
@@ -798,7 +803,7 @@ function SectorPicker({ areas, sectors, value, onChange }) {
     .map((a) => ({ area: a, items: active.filter((s) => s.area_id === a.id) }))
     .filter((g) => g.items.length);
   if (!groups.length)
-    return <p className="muted small">Cadastre setores antes de vincular gestores.</p>;
+    return <p className="muted small">Cadastre setores antes de vincular responsáveis.</p>;
   return (
     <div className="chip-picker" role="group" aria-label="Setores vinculados">
       {groups.map((g) => (
